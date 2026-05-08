@@ -1,0 +1,28 @@
+Act as a Senior Frontend Developer. Build a high-end, responsive "Register & Login" page system for "EstateAI" using React, Tailwind CSS v4, and motion/react.
+
+1. Layout & Aesthetic:
+- Background: A sleek, dark-themed obsidian background (#030303) with a subtle radial gradient glow in the center.
+- Card Design: Use a centered glassmorphism container (.liquid-glass utility). 
+- Card Styling: Thin border (white/10), backdrop-blur-xl, and rounded-3xl.
+
+2. Enhanced Form Logic (Based on Provided Image):
+- Grid: Use a 2-column grid for Name/Surname, Email/Phone, and Company/Country.
+- Fields: First Name, Last Name, Email, Phone (with country code selector), Country, City, and District.
+- Smart Company Selector (CRITICAL): Replace the standard text input for "Company" with a "Searchable Select/Combobox". 
+  - As the user types, it should filter a list of existing real estate agencies.
+  - If the company doesn't exist, allow them to "Add New Agency" as a custom option.
+  - UI: Use a dropdown that pops up with a subtle animation when the field is focused.
+
+3. Interactive Elements & UX:
+- Inputs: Use floating labels or clean placeholders with a focus effect that adds a subtle cyan neon glow to the border.
+- Checkboxes: Styled custom checkboxes for KVKK (Data Privacy) and Marketing consents.
+- Switcher: A sleek toggle at the top or bottom to switch between "Sign Up" and "Login" views with a smooth sliding animation.
+
+4. UI/UX Details:
+- Submit Button: A wide, "Glow Primary" button. When hovering, it should have a pulse effect.
+- Icons: Use Lucide-react icons inside the input fields (e.g., User icon for name, Mail icon for email).
+- Validation: Add real-time visual feedback (green/red borders) for valid/invalid inputs using motion/react for error message pop-ins.
+
+5. Visual Reference Integration:
+- Maintain the field grouping logic from the user's provided image but elevate the design to a "Dark Luxury" theme.
+- Ensure the dropdowns for City/District and Company follow the same glassmorphic styling as the main card.

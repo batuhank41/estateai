@@ -1,0 +1,1045 @@
+================================================================================
+                    ESTATEAI / EMLAKPRO - TÜM ÖZELLİKLER VE SAYFALAR
+================================================================================
+
+Bu dosya, EstateAI (EmlakPro) emlak yazılımındaki TÜM sayfaları, butonları,
+özellikleri ve yetki sistemini detaylı olarak açıklar.
+
+================================================================================
+                         1. GİRİŞ EKRANI (Login View)
+================================================================================
+
+Dosya: ui/login_view.py
+
+--- Bileşenler ---
+
+[Firma Seçimi Dropdown]
+  - Açıklama: Sistemde kayıtlı tüm şirketleri listeler
+  - Veri kaynağı: db.get_all_companies()
+  - Zorunlu: Evet (giriş için mutlaka seçilmeli)
+
+[Kullanıcı Adı Alanı]
+  - Placeholder: "Kullanıcı adınızı girin..."
+  - Enter tuşu ile giriş yapılabilir
+
+[Şifre Alanı]
+  - Placeholder: "Şifrenizi girin..."
+  - Echo mode: Password (karakterler gizli)
+  - Enter tuşu ile giriş yapılabilir
+
+[Beni Hatırla Checkbox]
+  - İşaretlenirse: Session token kaydedilir, sonraki açılışta otomatik doldurulur
+  - Kayıt bilgisi: AuthManager.save_session() ile şifrelenmiş token saklanır
+
+[Giriş Yap Butonu]
+  - Tetikler: _try_login()
+  - Doğrulama: company_id + username + password kontrolü
+  - Hata durumu: Şifre yanlışsa shake animasyonu + hata mesajı
+  - Onay durumu: is_approved=1 değilse "Hesabınız henüz onaylanmadı" mesajı
+  - Deneme süresi kontrolü: trial_expired=true ise giriş engellenir
+
+[Hesabınız yok mu? Kayıt Ol →]
+  - RegisterDialog penceresi açar
+
+[Uygulamayı Kapat Butonu]
+  - Dialog penceresi kapanır
+
+--- Oturum Açılışı ---
+_check_session():
+  - Daha önce kaydedilmiş session varsa otomatik doldurma yapar
+  - Şirket seçimi, kullanıcı adı ve Beni Hatırla işareti otomatik ayarlanır
+  - Kullanıcı daha önce onaylanmış ve Beni Hatırla açıksa direkt giriş yapılır
+
+================================================================================
+                         2. KAYIT EKRANI (Register View)
+================================================================================
+
+Dosya: ui/register_view.py
+
+--- Bileşenler ---
+
+[Firma Seçimi Dropdown]
+  - Sistemde kayıtlı tüm şirketleri listeler
+
+[İsim Soyisim Alanı]
+  - Placeholder: "İsim soyisim (min. 3 karakter)"
+  - Minimum uzunluk: 3 karakter
+
+[E-posta Alanı]
+  - Placeholder: "ornek@domain.com"
+
+[Şifre Alanı]
+  - Placeholder: "En az 8 karakter, büyük harf ve rakam"
+  - Güç göstergesi (progress bar):
+    * Kırmızı (%0-25): Zayıf
+    * Turuncu (%26-50): Orta
+    * Yeşil (%51-75): İyi
+    * Koyu yeşil (%76-100): Güçlü ✓
+
+[Şifre Onay Alanı]
+  - Placeholder: "Şifrenizi tekrar girin"
+  - Eşleşme kontrolü yapılır
+
+[Rol Dropdown]
+  - "Danışman" (varsayılan)
+  - "Broker (Ofis Yöneticisi)"
+  - Not: Danışman kaydı is_approved=0 ile oluşur (Broker onayı bekler)
+  - Not: Broker kaydı is_approved=1 ile oluşur (direkt aktif)
+
+[Hesabı Oluştur Butonu]
+  - Tüm validasyonları geçerse kayıt başarılı
+  - Başarılı kayıt sonrası: LoginDialog'a dönülür ve username otomatik doldurulur
+  - Mesaj gösterilir: "✓ Broker hesabınız oluşturuldu!" veya "✓ Kayıt başarılı! Hesabınız Broker tarafından onaylandıktan sonra aktif olacak."
+
+[← Giriş Ekranına Dön Butonu]
+  - RegisterDialog kapatılır
+
+================================================================================
+                    3. ANA PENCERE (Main Window)
+================================================================================
+
+Dosya: ui/main_window.py
+
+--- Sidebar (Sol Navigasyon) ---
+Not: Sidebar'daki menü öğeleri kullanıcı rolüne göre dinamik olarak görüntülenir.
+
+[YÖNETİM BÖLÜMÜ]
+  📊 Genel Bakış (dashboard)
+      → DashboardView'e gider
+
+  🎯 Satış Hunisi (pipeline)
+      → PipelineView'e gider
+      → Not: Sadece kendi eklediği müşteriler görünür
+
+  📅 Görev & Takvim (tasks)
+      → TasksView'e gider
+
+[PORTFÖY BÖLÜMÜ]
+  🏠 Portföyler (portfolio)
+      → PortfolioView'e gider
+
+  👥 Müşteriler (leads)
+      → LeadsView'e gider
+      → Not: Danışman sadece kendi eklediği müşterileri görür
+      → Not: Broker şirketin TÜM müşterilerini görür
+
+  ✨ Eşleşmeler (matches)
+      → MatchesView'e gider
+
+  🤝 Şirketler Arası (cross_matches)
+      → CrossMatchesView'e gider
+
+[AI ARAÇLARI BÖLÜMÜ]
+  💎 Dijital Değerleme (valuation)
+      → ValuationView'e gider
+      → Kredi gerektirir
+
+  ✍️ AI Copywriter (copywriter)
+      → CopywriterView'e gider
+      → Kredi gerektirir
+
+  🎙️ Ses Analizi (audio)
+      → AudioView'e gider
+
+  📡 Fırsat Radarı (scanner)
+      → ScannerView'e gider
+
+[SÖZLEŞMELER BÖLÜMÜ]
+  📄 Dijital Sözleşmeler (contracts)
+      → ContractsView'e gider
+
+[PAZARLAMA BÖLÜMÜ]
+  📢 Duyuru & Bülten (marketing)
+      → MarketingView'e gider
+
+  🎨 Tasarım Fabrikası (design)
+      → DesignView'e gider
+
+  🔥 Akıllı Isıtma (heating)
+      → HeatingView'e gider
+
+  🌐 Hazır Web Sitesi (website)
+      → WebsiteView'e gider
+
+[SİSTEM BÖLÜMÜ]
+  📈 Yönetici Paneli (broker) [ SADECE Broker ROLÜ ]
+      → BrokerView'e gider
+      → Not: Danışman bu seçeneği GÖRMEZ
+
+  ⚙️ Ayarlar (settings)
+      → SettingsView'e gider
+
+🚪 Uygulamayı Kapat
+  → QApplication.quit() - Uygulama tamamen kapanır
+
+--- Sidebar Alt Bilgi ---
+💳 KREDİ: [Sayı] - Mevcut kullanılabilir kredi miktarı
+👤 [Kullanıcı Adı] · [Rol]
+⏳ DENEME: [dk:sn] - Deneme süresi göstergesi (sadece deneme kullanıcıları için)
+
+--- Header Bar (Üst Bilgi) ---
+Sayfa Başlığı + Alt Başlık (Her sayfada dinamik olarak değişir)
+
+--- Sağ Tık Menüsü (Sistem Tray) ---
+EstateAI'yı Aç → pencereyi gösterir
+Kapat → uygulamadan çıkar
+
+================================================================================
+                    4. DASHBOARD (Genel Bakış)
+================================================================================
+
+Dosya: ui/dashboard.py
+
+--- Üst Hoşgeldiniz Alanı ---
+"Merhaba, [İsim] 👋" - Giriş yapan kullanıcının adıyla selamlar
+"İşte bugünkü gayrimenkul operasyonlarına genel bakışınız."
+
+[＋ Yeni Portföy Ekle Butonu]
+  → Portföy sayfasına (portfolio) gider
+
+--- İstatistik Kartları ---
+🏠 Aktif Portföy: [Sayı] - Şu an aktif portföy sayısı
+👥 Müşteri Sayısı: [Sayı] - Aktif müşteri sayısı
+📅 Bugünkü Görev: [Sayı] - Bugün yapılacak görev sayısı
+💰 Toplam Ciro: [Tutar] ₺ - Satılan portföylerin toplam değeri
+
+--- Son Portföyler Kartı ---
+Başlık: "🏢 Son Portföyler" (son 5)
+"Tümünü Gör →" butonu → Portföy sayfasına gider
+Listedeki her öğe: [İkon] [Başlık] - [İlçe] · [Fiyat] ₺ (Ekleyen: [Danışman])
+
+--- Son Müşteriler Kartı ---
+Başlık: "👥 Son Müşteriler" (son 5)
+"Tümünü Gör →" butonu → Müşteri sayfasına gider
+Listedeki her öğe: [İkon] [Ad Soyad] - [İlçe] [Max Bütçe] ₺ (Ekleyen: [Danışman])
+
+================================================================================
+                    5. MÜŞTERİ YÖNETİMİ (Leads View)
+================================================================================
+
+Dosya: ui/leads_view.py
+
+--- Üst Panel ---
+Başlık: "Müşteri Yönetimi"
+Alt başlık: "Tüm potansiyel alıcı ve satıcılarınızı buradan takip edin."
+
+[＋ Yeni Müşteri Ekle Butonu]
+  → LeadFormDialog açar (yeni müşteri formu)
+
+--- İstatistik Kartları ---
+👥 Toplam: [Sayı] - Tüm müşteriler
+✅ Aktif: [Sayı] - Aktif durumdaki müşteriler
+⏳ Havuz: [Sayı] - Havuza alınmış müşteriler
+📦 Kapanan: [Sayı] - Kapanan müşteriler
+
+--- Filtreler ve Arama ---
+🔍 İsim, telefon veya bölge ile ara... (aram alanı)
+Filtre dropdown: Tümü / Aktif / Havuz / Kapanan
+
+--- Müşteri Tablosu ---
+Sütunlar: ID | Müşteri Adı | İletişim | Bölge | Bütçe | Durum | Ekleyen | İşlemler
+  - Durum renklendirmesi: Aktif (yeşil), Havuz (turuncu), Kapanan (gri)
+  - Ekleyen sütunu: "Ben" olarak görünür eğer müşteri kendi tarafından eklenmişse
+
+--- Tablo Satır İşlemleri Butonu (Hamburger Menü ≡) ---
+  ✏️  Düzenle → _edit_lead()
+  ✨  Eşleştir → _run_matching()
+  🎙️  Ses Analizi → _open_audio_analysis()
+  📝  Notlar → _open_notes()
+  ⏰  Hatırlatıcı → _open_reminder()
+  ✅  İletişim Güncelle → _update_contact() (son temas tarihini günceller)
+  📱  WhatsApp → _quick_whatsapp()
+  📧  E-Posta → _quick_mail()
+  ─────────────
+  🗑️  Sil → _delete_lead()
+
+--- Alt Aksiyon Butonları ---
+ℹ️ Detay / Düzenle → Seçili müşteriyi düzenleme formunda açar
+✨ Eşleştir → Seçili müşteri için portföy eşleştirmesi çalıştırır
+⏰ Hatırlatıcı → Seçili müşteri için hatırlatıcı oluşturma diyaloğu açar
+🎙️ Ses Analizi → Ses analizi sayfasını bu müşteriyle açar
+📧 Hızlı Teklif → Seçili müşteriye email gönderme diyaloğu açar
+📱 WhatsApp → WhatsApp web üzerinden müşteriye mesaj gönderir (akıllı mesaj taslağı ile)
+🗑️ Sil → Seçili müşteriyi siler (onay gerektirir)
+
+--- Müşteri Form Dialog (LeadFormDialog) ---
+Alanlar:
+  - Ad Soyad * (zorunlu)
+  - Telefon
+  - E-posta
+  - Bülten İzni (Abone / Abonelikten Çıktı)
+  - Min Bütçe (₺)
+  - Max Bütçe (₺)
+  - Tercih İl
+  - Tercih İlçe
+  - Tercih Mahalle
+  - Oda Tercihi (Fark Etmez + oda seçenekleri)
+  - Zorunlu İstekler (virgülle ayrılmış)
+  - Bonus İstekler (virgülle ayrılmış)
+  - Durum (active / pool / closed)
+  - Notlar
+
+--- Hızlı Mail Dialog (QuickMailDialog) ---
+Şablon Seçimi:
+  - Akıllı Portföy Bülteni
+  - Bölge Analizi
+  - Özel Mesaj
+Konu alanı
+Mesaj alanı (TextEdit)
+Gönder butonu → MailManager.send_template_email()
+
+--- YETKİ KISITLAMASI (ÇOK ÖNEMLİ) ---
+⚠️⚠️⚠️ MÜŞTERİ YETKİ KURALI ⚠️⚠️⚠️
+  - Danışman: Sadece KENDİ eklediği müşterileri düzenleyebilir ve silebilir
+  - Broker: Şirketin TÜM müşterilerini düzenleyebilir ve silebilir
+  - Müşteri oluşturulduğunda created_by_id otomatik olarak oluşturan kullanıcının ID'si kaydedilir
+  - Başka danışmanın müşterisini düzenlemeye/silmeye çalışırsanız:
+    "Müşteriyi sadece onu oluşturan kişi düzenleyebilir." uyarısı gelir
+
+================================================================================
+                    6. PORTFÖY YÖNETİMİ (Portfolio View)
+================================================================================
+
+Dosya: ui/portfolio_view.py
+
+--- Üst Panel ---
+Başlık: "Portföy Yönetimi"
+[＋ Yeni Portföy Ekle Butonu] → PortfolioFormDialog açar
+
+--- İstatistik Kartları ---
+🏠 Aktif: [Sayı]
+📦 Satılan: [Sayı]
+⏳ Pasif: [Sayı]
+🔒 Rezerve: [Sayı]
+
+--- Filtreler ---
+Filtre dropdown: Tümü / Aktif / Pasif / Satılan / Rezerve
+
+--- Portföy Tablosu ---
+Sütunlar: ID | Portföy Adı | Tür | İl/İlçe | Fiyat | Durum | Ekleyen | Detay
+
+--- Portföy Detay Dialog (PortfolioDetailDialog) ---
+Bu dialog portföyü tam ilan formatında gösterir:
+  - Başlık + Fiyat header (duruma göre renkli)
+  - Resimler (tıklanabilir, büyük görüntüleyici açar)
+  - Bilgiler grid:
+      🏠 Mülk Tipi | 🛏 Oda Sayısı | 📐 Alan | 🏷 İlan Tipi
+      📍 İl | 📍 İlçe | 🏘 Mahalle | 📊 Durum
+      👤 Danışman | 📅 Sözleşme Başlangıç | 📅 Sözleşme Bitiş
+  - Özellikler (badge olarak)
+  - Açıklama
+
+--- Portföy Ekleme/Düzenleme Formu (PortfolioFormDialog) ---
+Alanlar:
+  - Başlık *
+  - Mülk Tipi (Daire, Villa, Arsa, vb.)
+  - Oda Sayısı
+  - Alan (m²)
+  - Fiyat (₺)
+  - İl
+  - İlçe
+  - Mahalle
+  - İlan Tipi (Satılık / Kiralık)
+  - Açıklama
+  - Özellikler
+  - Durum (Aktif / Pasif / Satılık / Rezerve)
+  - Sözleşme Başlangıç / Bitiş Tarihi
+  - Görseller (çoklu yükleme)
+
+--- Fiyat Düşüş Bildirimi ---
+📉 Fiyatı Düşen Portföyler butonu → Son 30 günde %5+ düşen portföyleri listeler
+
+--- Portföy Değişiklik Günlüğü (PortfolioLogsDialog) ---
+Her portföy için yapılan değişikliklerin tarihçesi
+
+--- YETKİ KURALI ---
+  - Portföy görüntüleme: Şirket içindeki herkes tüm portföyleri görebilir (ortak vitrin)
+  - Portföy düzenleme:
+      Danışman: Sadece kendi eklediği portföyleri düzenleyebilir
+      Broker: Şirketin tüm portföylerini düzenleyebilir
+  - Portföy silme: Aynı yetki kuralları geçerli
+
+================================================================================
+                    7. SATIŞ HUNİSİ (Pipeline View)
+================================================================================
+
+Dosya: ui/transfer_view.py
+
+Kanban tahtası ile müşterilerin satış sürecindeki ilerlemesini takip eder.
+
+--- Kolonlar (6 Aşama) ---
+1. "Yeni Başvuru" (🔵 Mavi)
+2. "Görüşme Yapıldı" (🟣 Mor)
+3. "Yer Gösterildi" (🟠 Turuncu)
+4. "Teklif Aşamasında" (🟠 Koyu Turuncu)
+5. "Başarılı" (🟢 Yeşil)
+6. "Başarısız" (🔴 Kırmızı)
+
+--- Kart Yapısı ---
+Her kartta:
+  - Müşteri Adı
+  - 💰 Bütçe: [Miktar] ₺
+  - 📞 [Telefon]
+  - 🏢 [Bağlı Portföy] (varsa, tıklanabilir) veya 🔗 Portföy Eşleştir butonu
+  - ✕ (Panodan çıkar butonu)
+  - "⋮⋮ Sürüklemek için basılı tutun" (görsel ipucu)
+
+--- Kart Sürükle-Bırak ---
+  - Kartı bir kolondan diğerine sürükleyerek aşama değiştirilebilir
+  - Hedef kolo hover'da kesikli çerçeve ile vurgulanır
+  - Bırakıldığında anında görsel güncelleme yapılır
+  - Veritabanı güncellemesi arka plan thread'inde gerçekleşir (UI kitlenmez)
+
+--- Üst Butonlar ---
+[+ Panoya Müşteri Ekle] → AddToPipelineDialog açar
+  - Sadece "Panoda Değil" durumundaki müşteriler listelenir
+  - Sadece kendi eklediği müşteriler görünür
+
+[🔄 Yenile] → Pipeline yenilenerek veritabanından güncel veriler çekilir
+
+--- YETKİ KURALI ---
+  - Danışman: Sadece kendi eklediği müşterileri huniye ekleyebilir ve yönetebilir
+  - Pipeline_stage güncellemeleri sadece müşterinin sahibi tarafından yapılabilir
+
+================================================================================
+                    8. GÖREV & TAKVİM (Tasks View)
+================================================================================
+
+Dosya: ui/tasks_view.py
+
+--- Üst Panel ---
+Başlık: "Aktivite ve Görevler"
+
+Filtre dropdown: Tümü / Bekliyor / Tamamlandı / İptal
+
+[+ Yeni Görev] → TaskDialog açar
+
+--- Görev Satırı (TaskRow) ---
+  - Görev Başlığı
+  - Görev Tipi badge (Görüşme / Yer Gösterme / Tapu/Noter / Toplantı / Diğer)
+  - Öncelik badge (Yüksek=kırmızı / Orta=turuncu / Düşük=yeşil)
+  - Müşteri bağlantısı (varsa) → 👤 [Müşteri Adı]
+  - Portföy bağlantısı (varsa) → 🏢 [Portföy Adı]
+  - ⏰ [Tarih/Saat]
+
+Aksiyon butonları:
+  - 📝 (Düzenle) → TaskDialog düzenleme modunda açar
+  - ❌ (Sil) → Onay gerektirir
+  - ✓ Tamamla (sadece Bekliyor durumundaysa)
+  - ✕ İptal (sadece Bekliyor durumundaysa)
+
+--- Görev Dialog (TaskDialog) ---
+Alanlar:
+  - Görev Başlığı *
+  - Görev Tipi (Görüşme, Yer Gösterme, Tapu/Noter, Toplantı, Diğer)
+  - Öncelik (Yüksek, Orta, Düşük)
+  - Açıklama
+  - Tarih/Saat (calendar popup ile)
+  - Bağlı Müşteri (dropdown)
+  - Bağlı Portföy (dropdown)
+
+================================================================================
+                    9. EŞLEŞMELER (Matches View)
+================================================================================
+
+Dosya: ui/matches_view.py
+
+Müşteri-Portföy eşleştirme önerilerini gösterir.
+
+--- İstatistik Kartları ---
+🔗 Toplam Eşleşme: [Sayı]
+⏳ Bekleyen: [Sayı]
+🎉 Satış: [Sayı]
+✗ Reddedilen: [Sayı]
+
+--- Tablo Sütunları ---
+ID | Müşteri | Mülk | Bölge | Skor | Durum | Tarih
+
+Skor renklendirmesi:
+  - %80+ → Yeşil (yüksek uyum)
+  - %60-79 → Turuncu (orta uyum)
+  - %60- → Kırmızı (düşük uyum)
+
+Durum renklendirmesi:
+  - Bekleyen → Turuncu
+  - Sunuldu → Mavi
+  - Reddedildi → Kırmızı
+  - Satış → Yeşil
+
+--- Butonlar ---
+[Tüm Eşleştirmeyi Çalıştır] → Tüm aktif müşteriler için portföy eşleştirmesi yapar
+
+[Detay] → Seçili eşleşmenin anatomisini gösterir (detaylı skor analizi)
+
+[Sunuldu] → Seçili eşleşmenin durumunu "presented" olarak günceller
+
+[Reddedildi] → Seçili eşleşmenin durumunu "rejected" olarak günceller
+
+[Satış!] → Seçili eşleşmenin durumunu "sold" olarak günceller
+
+================================================================================
+                10. ŞİRKETLER ARASI EŞLEŞMELER (Cross Matches View)
+================================================================================
+
+Dosya: ui/cross_matches_view.py
+
+Farklı şirketlerdeki müşteri-portföy eşleşmelerini bulur.
+
+--- Bilgilendirme ---
+"Bu sayfada kendi müşteri veya portföylerinizin diğer şirketlerdeki eşleşen karşılıklarını görebilirsiniz."
+
+--- İstatistik Kartları ---
+🔗 Toplam Cross-Eşleşme: [Sayı]
+📤 Giden Talepler: [Sayı] (kendi müşterimiz → başka şirket portföyü)
+📥 Gelen Talepler: [Sayı] (başka şirket müşterisi → bizim portföyümüz)
+
+--- Tablo Sütunları ---
+ID | Tip | İşlem Özeti | Skor | Hedef Şirket | İlgili Danışman | E-Posta | Tarih
+
+Tip renklendirmesi:
+  - 📤 GİDEN (koyu mavi) → Bizim müşterimiz eşleşti
+  - 📥 GELEN (yeşil) → Bize müşteri geldi
+
+--- Butonlar ---
+[🔄 Listeyi Yenile] → Tabloyu günceller
+
+[🚀 Çapraz Eşleştirmeyi Tetikle] → Tüm aktif müşteri ve portföyler için cross-matching çalıştırır
+
+[Analiz Detayı] → Detaylı eşleşme bilgisi + karşı şirket danışman bilgilerini gösterir
+
+[İletişim Kuruldu İşaretle] → cross_matches tablosunda contact_exchanged=1 olarak işaretler
+
+================================================================================
+                11. DİJİTAL DEĞERLEME (Valuation View)
+================================================================================
+
+Dosya: ui/valuation_view.py
+
+AI destekli otomatik ekspertiz raporu oluşturur.
+
+--- Sol Panel (Parametreler) ---
+🏡 Dijital Değerleme başlığı
+
+[Bölge (Haritadan Seçiniz) *]
+  - Harita üzerinden tıklanarak seçim yapılır
+  - Seçilen noktanın koordinatları ve adres bilgisi otomatik dolar
+  - Read-only alan
+
+[Mülk Tipi] dropdown: Daire, Villa, Arsa, Dükkan, Ofis, Müstakil
+
+[Oda Sayısı] dropdown + "Fark Etmez" checkbox
+
+[Metrekare] spinbox (m²) + "Fark Etmez" checkbox
+
+[🔍 Değerleme Yap ve Rapor Oluştur (X kredi)] butonu
+  - Kredi kontrolü yapılır
+  - Yetersiz kredi varsa uyarı gösterilir
+  - İşlem 30-60 saniye sürebilir (web scraping içerir)
+  - İlerleme çubuğu gösterilir
+
+⚠️ Not: "Bu işlem web üzerinden canlı veri topladığı için biraz uzun sürebilir"
+
+[📄 PDF Raporu Kaydet] butonu (değerleme yapıldıktan sonra aktif)
+
+--- Sağ Panel (Sonuçlar) ---
+
+📊 Analiz Edilen: [Sayı] → Kaç emsal karşılaştırıldı
+📐 ort. m² Fiyatı: [Tutar] ₺ → Ortalama metrekare fiyatı
+💰 Tahmini Değer: [Tutar] ₺ → Hesaplanan piyasa değeri
+📈 Medyan m² Fiyatı: [Tutar] ₺ → Medyan metrekare fiyatı
+
+Değer Aralığı:
+  - ALT DEĞER (turuncu) → Minimum tahmin
+  - ÖNERİLEN (yeşil) → En güvenilir tahmin
+  - ÜST DEĞER (mavi) → Maksimum tahmin
+
+--- Sonuç Kartları ---
+🗺️ Lokasyon & Harita Analizi
+  - OSM haritası üzerinde seçilen bölge
+  - Arama çubuğu ile adres arama
+
+📈 Yatırım Analizi (ROI)
+  - Kira getirisi hesabı
+  - Geri dönüş süresi
+
+📍 Çevresel Veriler (POI)
+  - Hastane, okul, alışveriş merkezi gibi çevre tesisleri
+
+--- Değerleme Adımları ---
+1. 🌐 İnternet üzerinden güncel emsaller taranıyor
+2. 📊 Piyasa verileri hesaplanıyor
+3. 🤖 Yapay Zeka analizi yapılıyor (10-15 saniye)
+4. 📈 Yatırım analizi yapılıyor
+5. 📍 Çevresel veriler toplanıyor
+
+================================================================================
+                12. FIRSAT RADARI (Scanner View)
+================================================================================
+
+Dosya: ui/scanner_view.py
+
+Sahibinden.com'dan güncel ilanları tarar.
+
+--- Sol Panel ---
+🎯 Fırsat Tarayıcı başlığı
+
+[Bölge (Haritadan Seçiniz) *]
+  - Haritadan tıklama ile il/ilçe/mahalle bilgisi alınır
+
+[İşlem Tipi] dropdown: satilik / kiralik
+
+[Tarama Kapsamı] dropdown:
+  - Mahalle Bazlı (İl + İlçe + Mahalle)
+  - İlçe Bazlı (İl + İlçe)
+  - İl Bazlı (Sadece İl)
+
+[🔍 Yeni İlanları Tara] butonu
+  - Tarama başlar, ilerleme gösterilir
+  - Sadece BUGÜNÜN ilanları filtrelenir
+  - Daha önce taranmış ilanlar atlanır
+  - Yeni ilanlar veritabanına kaydedilir
+
+--- Tarama Sonuçları (Sağ Panel) ---
+Bulunan:
+  - Yeni İlan: [Sayı]
+  - Zaten Kayıtlı: [Sayı]
+  - Eski İlan (atlanan): [Sayı]
+
+--- Tarama Geçmişi ---
+Daha önce taranan bölgeler listesi
+
+================================================================================
+                13. DİJİTAL SÖZLEŞMELER (Contracts View)
+================================================================================
+
+Dosya: ui/contracts_view.py
+
+Altı farklı sözleşme şablonu ile profesyonel sözleşme oluşturur.
+
+--- Sözleşme Listesi Tablosu ---
+Sütunlar: Tip | Müşteri | Portföy | Tarih | İşlemler
+Her satırda 🗑️ silme butonu
+
+[➕ Yeni Sözleşme Oluştur] → ContractWizardDialog açar
+
+--- Sözleşme Wizard Dialog ---
+1. Adım: Seçimler
+  - Sözleşme Tipi dropdown:
+      * Yer Gösterme Belgesi
+      * Yetkilendirme Sözleşmesi
+      * Hizmet Ortaklığı Sözleşmesi
+      * Satış Vaadi Protokolü
+      * Tahliye Taahhütnamesi
+      * Süreli Satış/Kiralama Aracılık
+
+  - Müşteri Seçimi dropdown
+  - Portföy Seçimi dropdown
+  - [🪄 Otomatik Doldur] butonu → Seçilen müşteri ve portföy bilgilerini form alanlarına doldurur
+
+2. Otomatik Doldurma Sonrası:
+  - Sistem otomatik olarak şu bilgileri çeker:
+      * Şirket bilgileri (ad, yetki no, adres)
+      * Danışman bilgileri (ad, telefon)
+      * Müşteri bilgileri (ad, TC, telefon, email)
+      * Portföy bilgileri (adres, fiyat, ada/parsel, tip)
+
+3. Şablon Görsel Editörü (QTextEdit)
+  - Profesyonel HTML/CSS formatında sözleşme metni
+  - Tablo yapıları, vurgulama, alt çizgiler
+  - PDF çıktısı için optimize
+
+4. Alt Butonlar:
+  - [💾 Veritabanına Kaydet] → SQLite'e kaydeder
+  - [📕 PDF Olarak İndir] → Pydyf ile PDF oluşturur ve indirir
+
+================================================================================
+                14. YÖNETİCİ PANELİ (Broker View)
+================================================================================
+
+Dosya: ui/broker_view.py
+
+Not: SADECE Broker rolündeki kullanıcılar erişebilir!
+
+--- Üst Filtreler ---
+Dönem: Son 3 Ay / Son 6 Ay / Son 12 Ay / Tüm Zaman
+
+[📄 PDF Raporu] butonu
+[🔄 Grafikleri Güncelle] butonu
+
+--- KPI Kartları ---
+🏆 Şirket Cirosu: [Tutar] ₺ → Net komisyon (komisyon - danışman payı)
+💰 Mülk Satışı: [Tutar] ₺ → Toplam satış bedeli
+🏠 Satılan Adet: [Sayı]
+📊 Aktif Portföy: [Sayı]
+🎯 Dönüşüm Oranı: [Yüzde] → (Satış / Toplam Müşteri)
+
+--- Sekmeler ---
+📈 Aylık Satış → Matplotlib bar chart ile aylık satış grafiği
+🏆 Satış Paneli → Tüm satış kayıtları tablosu
+👤 Agent Performans → Danışman bazlı performans grafikleri
+📍 Bölge Analizi → Hangi bölgelerde ne satılmış
+🧲 Dönüşüm Hunisi → Müşteri aşamalarının dönüşüm oranları
+💸 Fiyat Değişiklikleri → Son fiyat güncellemeleri
+✅ Kullanıcı Onayları → Onay bekleyen danışmanlar listesi
+
+--- Satış Kayıtları Tablosu ---
+Tarih | Danışman | Portföy Başlığı | Bölge | Satış Fiyatı | Şirket Komisyonu | Danışman Komisyonu | İndirim | Net Ciro
+
+--- Kullanıcı Onay Sekmesi ---
+Tablo: ID | Kullanıcı Adı | Ad Soyad | Kayıt Tarihi | Rol
+
+[Kullanıcıyı Onayla] butonu (yeşil)
+  → is_approved=1 yapılır, kullanıcı giriş yapabilir
+
+[Reddet / Sil] butonu (kırmızı)
+  → Kullanıcı kaydı silinir
+
+[Deneme Aktifleştir] butonu (test amaçlı - 1 dakika deneme)
+
+--- YETKİ KURALI ---
+⚠️ Bu sayfaya sadece role="Broker" olan kullanıcılar erişebilir!
+⚠️ Danışmanlar bu menüyü sidebar'da göremez bile!
+
+================================================================================
+                15. PAZARLAMA / DUYURU (Marketing View)
+================================================================================
+
+Dosya: ui/marketing_view.py
+
+Toplu email kampanyaları gönderir.
+
+--- Kampanya Tablosu ---
+Sütunlar: Başlık | Alıcı Sayısı | Gönderim Tarihi | Durum
+
+[➕ Yeni Duyuru Oluştur] → CampaignDialog açar
+
+--- Kampanya Dialog ---
+1. Duyuru Başlığı *
+2. E-posta Konusu
+3. İçerik (textarea)
+4. Alıcı Listesi:
+   - Tüm müşterileri listeler
+   - Checkbox ile seçim
+   - [Tümünü Seç] butonu
+   - Abone olan müşteriler otomatik yüklenir
+   - Seçili: [Sayı] / [Toplam] seçili
+
+5. Kaydet Butonları:
+   - [💾 Taslak Kaydet] → Kaydet ama gönderme
+   - [🚀 Duyuruyu Gönder] → MailManager üzerinden gönderim başlatır
+
+================================================================================
+                16. AI COPYWRITER (Copywriter View)
+================================================================================
+
+Dosya: ui/copywriter_view.py
+
+Yapay zeka ile ilan metni oluşturur.
+
+--- Kredi Bilgisi ---
+Mevcut Krediniz: [X] · Bu işlem: [Y] kredi
+
+--- Portföy ve Format Seçimi ---
+Portföy dropdown: Aktif portföyler listesi
+
+Format dropdown:
+  - Sahibinden.com
+  - Instagram
+  - WhatsApp
+
+[✨ İlan Metni Üret (X Kredi)] butonu
+  → AI kredi düşülür
+  → Arka planda AI Copywriter çalışır
+  → Sonuç text alanında gösterilir
+
+--- Sonuç Alanı ---
+[📋 Kopyala] butonu → Metni panoya kopyalar
+
+================================================================================
+                17. SES ANALİZİ (Audio View)
+================================================================================
+
+Dosya: ui/audio_view.py
+
+Sesli görüşme kaydı ve transkripsiyon.
+
+--- Mikrofon Tanı Diyaloğu ---
+🎤 Mikrofon Tanı Aracı
+  - Giriş Cihazı dropdown (sistem mikrofonları listeler)
+  - Durum badge (hazır / dinleniyor / hata)
+  - VU Metre (anlık ses seviyesi)
+  - En yüksek seviye gösterimi
+  - [▶ Testi Başlat] / [⏹ Testi Durdur] butonu
+
+--- Kayıt Alanı ---
+[● Kaydı Başlat] butonu → Mikrofondan canlı kayıt başlar
+  → VU metre aktif olarak ses seviyesini gösterir
+  → Kayıt süresi görüntülenir
+
+[⏹ Kaydı Durdur] butonu → Kayıt biter, dosya oluşur
+
+[🔄 Yeni Kayıt] butonu → Temizler, yeniden başlar
+
+--- Transkripsiyon ---
+[📝 Transkripti Al] butonu
+  → Gemini API'ye gönderilir
+  → Ses dosyası metne dönüştürülür
+  → Sonuç gösterilir
+
+[💾 Kaydet] butonu → Veritabanına interactions tablosuna kaydeder
+
+--- Geçmiş Kayıtlar ---
+Önceki kayıtların listesi
+
+================================================================================
+                18. DİJİTAL ARŞİV (Archive View)
+================================================================================
+
+Dosya: ui/archive_view.py
+
+Portföy dosyalarını yönetir.
+
+--- Portföy Seçimi Dropdown ---
+Arşivlenecek portföy seçilir
+
+--- Dosya Listesi ---
+Grid görünümünde dosyalar:
+  - 🖼 (resim)
+  - 📄 (PDF)
+  - 🎬 (video)
+  - 📎 (diğer)
+
+Çift tıklama → Dosyayı açar
+
+--- Butonlar ---
+[Dosya Yükle] → QFileDialog ile seçim yapılır, portföye eklenir
+[Önizle / Aç] → Seçili dosyayı varsayılan uygulamada açar
+[Sil] → Dosyayı siler (onay gerektirir)
+
+================================================================================
+                19. İLAN X-RAY (Xray View)
+================================================================================
+
+Dosya: ui/xray_view.py
+
+ilan metnini AI ile analiz eder.
+
+--- Giriş ---
+📝 İlan Metni Analizi (X kredi)
+
+Textarea: İlan metni yapıştırılır
+
+[🔍 Analiz Et (X Kredi)] butonu
+  → AI analizi başlar
+  → Kredi düşülür
+  → Sonuçlar gösterilir
+
+--- Çıktı Kartları ---
+  - Eksik Bilgiler
+  - Kalite Puanı
+  - Öneriler
+  - Güçlü Yönler
+
+================================================================================
+                20. AYARLAR (Settings View)
+================================================================================
+
+Dosya: ui/settings_view.py
+
+--- Profil Kartı ---
+Kullanıcı avatar (baş harfler)
+İsim Soyisim
+Rol badge (Danışman / Broker)
+Firma adı
+Kredi: [Sayı] (sağ üst köşede büyük)
+
+--- AES-256 Veri Şifreleme ---
+Durum göstergesi (yeşil/kırmızı)
+Açıklama metni
+
+--- Sistem Bilgisi ---
+İsim Soyisim | Rol | Firma
+
+--- Kredi Paketleri ---
+Bilgi metni (yakında kredi kartı ile yükleme)
+[Kredi Satın Al (Yakında)] butonu (şimdilik kapalı)
+
+--- Destek & İletişim ---
+📧 salvadorticaret@gmail.com
+
+--- Portföy İçe Aktarma (Excel/CSV) ---
+Bilgi: "Sahibinden mağaza panelinizden indirdiğiniz Excel veya CSV dosyasını yükleyerek portföylerinizi topluca sisteme aktarabilirsiniz."
+
+[📂 Excel/CSV Dosyası Seç] butonu
+  → Dosya seçilir
+  → pandas ile okunur
+  → Sütun eşleştirme yapılır
+  → Portföyler veritabanına aktarılır
+
+--- Oturum Yönetimi ---
+Bilgi: "Bu buton mevcut oturumunuzu güvenli biçimde sonlandırır ve giriş ekranına döndürür."
+
+[🚪 Oturumu Kapat] butonu
+  → AuthManager.clear_session()
+  → Login ekranına dönülür
+
+--- Başlangıç Turu ---
+Bilgi: "Interaktif tur rehberini yeniden başlatabilirsiniz."
+
+[🎓 Tur Rehberini Yeniden Başlat] butonu
+
+================================================================================
+                21. ÇEŞİTLİ DİYALOGLAR
+================================================================================
+
+--- Hatırlatıcı Dialog (ReminderDialog) ---
+Alanlar:
+  - Başlık *
+  - Not
+  - Tarih/Saat (seçilen müşteri ile otomatik bağlantılı)
+
+Aksiyonlar:
+  - 📱 WhatsApp aç → Müşteri telefonuna WhatsApp web üzerinden mesaj
+  - ✅ Tamamlandı işaretle → Hatırlatıcı tamamlandı olarak işaretlenir
+
+--- Not Dialog (NoteDialog) ---
+Basit not ekleme/görüntüleme dialogu
+
+--- Hatırlatıcı Popup ---
+Sistem bildirimi olarak sağ alt köşede çıkar:
+  - 🔔 Hatırlatıcı Aktif!
+  - Müşteri adı
+  - Not mesajı
+  - Planlanan Saat
+  - 📱 WhatsApp butonu
+  - ✅ Tamamlandı butonu
+
+================================================================================
+                22. VERİTABANI YAPISI
+================================================================================
+
+TABLOLAR:
+---------
+companies           → Şirketler
+users               → Kullanıcılar (danışmanlar, brokerlar)
+portfolios          → Portföyler (emlak ilanları)
+leads               → Müşteriler
+matches             → Müşteri-Portföy eşleşmeleri
+cross_matches       → Şirketler arası eşleşmeler
+price_history       → Fiyat değişim tarihçesi
+documents           → Portföy dosyaları (arşiv)
+reminders           → Hatırlatıcılar
+interactions        → Müşteri etkileşim notları (ses transkriptleri dahil)
+opportunities       → FSBO fırsatları (sahibinden tarama)
+contracts           → Oluşturulan sözleşmeler
+system_management   → Sistem ayarları (anahtar-değer)
+neighbor_regions    → Bölge yakınlık verileri
+
+TRIGGERLER:
+-----------
+trg_price_change    → Portföy fiyatı değiştiğinde price_history'ye otomatik kayıt
+trg_portfolio_updated → Portföy güncellendiğinde updated_at'i yenile
+
+================================================================================
+                23. YETKİ SİSTEMİ VE VERİ İZOLASYONU
+================================================================================
+
+ÇOK ÖNEMLİ - TÜM YETKİ KURALLARI:
+==================================
+
+1. ŞİRKET İZOLASYONU (company_id)
+   - Her kullanıcı, veri ve işlem belirli bir şirkete aittir
+   - cross_join sorguları şirket_id kontrolü gerektirir
+   - Hiçbir danışman başka şirketin verisini göremez
+
+2. MÜŞTERİ YETKİLERİ (Zırhlı Kasa)
+   - created_by_id: Müşteriyi kimin eklediği kaydedilir
+   - Danışman: Sadece kendi eklediği müşterileri görür/düzenler/siler
+   - Broker: Şirketin TÜM müşterilerini görür/düzenler/siler
+   - lead.get("phone") sadece sahibi için açıktır, diğer danışmanlar için "—" görür
+
+3. PORTFÖY YETKİLERİ (Ortak Vitrin)
+   - Tüm danışmanlar şirketin tüm portföylerini GÖREBİLİR
+   - Düzenleme/silme: Sadece portföy sahibi (agent_id) veya Broker
+   - agent_name her zaman görünür (kim ekledi bilgisi)
+
+4. BROKER YETKİLERİ (Tam Erişim)
+   - Şirketin tüm müşterilerine erişim
+   - Şirketin tüm portföylerine düzenleme/silme
+   - Kullanıcı onay/reddetme (is_approved yönetimi)
+   - BrokerView'e sadece Broker erişebilir
+
+5. DANIŞMAN YETKİLERİ (Kısıtlı)
+   - Sadece kendi verilerini yönetebilir
+   - Broker panelini göremez
+   - Broker onayı beklemeden kayıt olamaz (is_approved=0)
+
+6. DENEME SÜRESİ
+   - is_trial=1 olan hesaplarda deneme süresi takibi
+   - trial_ends_at: Deneme bitiş tarihi
+   - Süre dolunca oturum kapatılır
+   - main_window._check_trial_expiry() her saniye kontrol eder
+
+7. KREDİ SİSTEMİ
+   - Her işlem belirli kredi miktarı gerektirir
+   - db.deduct_credits() ile kredi düşülür
+   - Yetersiz kredi = işlem reddedilir
+   - credits_updated sinyali sidebar'ı günceller
+
+8. OPERASYONEL ADALET (automation)
+   - 3+ gün hareketsiz müşteriler → otomatik "pool" (havuz) durumuna alınır
+   - check_and_update_inactive_leads() fonksiyonu
+   - 5 dakikada bir kontrol edilir
+
+9. TEK YETKİ SÖZLEŞMESİ UYARISI
+   - exclusive_contract_end_date yaklaşan portföyler için uyarı
+   - 7 gün kala status bar'da mesaj gösterilir
+
+================================================================================
+                24. YAPAY ZEKA VE OTOMASYON MODÜLLERİ
+================================================================================
+
+modules/valuation_engine.py
+  - calculate_market_stats() → Bölge emlak istatistikleri
+  - estimate_value() → Değer tahmini
+  - generate_ai_report() → AI destekli ekspertiz raporu
+  - scrape_web_comparables() → Web'den emsal verisi çekme
+  - calculate_roi() → Yatırım getirisi hesaplama
+  - get_poi_data() → Çevresel tesis verileri
+
+modules/ai_copywriter.py
+  - generate_copy() → AI ilan metni üretimi
+
+modules/audio_processor.py
+  - transcribe_audio() → Ses dosyasını metne dönüştürme
+
+modules/listing_xray.py
+  - analyze_listing() → İlan kalitesi analizi
+
+modules/operational_justice.py
+  - check_and_update_inactive_leads() → Havuz otomasyonu
+  - check_expiring_exclusive_contracts() → Sözleşme bitiş kontrolü
+
+modules/reminder_engine.py
+  - check_pending_reminders() → Zamanı gelen hatırlatıcıları kontrol
+  - open_whatsapp() → WhatsApp açma
+
+================================================================================
+                25. SİSTEM ÖZELLİKLERİ
+================================================================================
+
+- ReminderPopup: Sağ alt köşede sistem bildirimi olarak çıkar
+- QSystemTrayIcon: Sistem tepsisinde uygulama simgesi
+- Onboarding Tour: Yeni kullanıcılar için interaktif tur rehberi
+- Session Management: Oturum açma/kapama, Beni Hatırla
+- Kredi Takibi: Sidebar'da anlık kredi görüntüleme
+- Trial Countdown: Deneme süresi geri sayımı
+- Filtreleme & Arama: Tüm listeleme sayfalarında
+- Drag & Drop: Pipeline'da kart sürükleme
+- PDF Export: Değerleme ve sözleşmeler için
+- Excel/CSV Import: Toplu portföy aktarımı
+- AES-256 Encryption: Müşteri telefon ve notları için (opsiyonel)
+
+================================================================================
+                         SONU - ÖZELLİKLER LİSTESİ
+================================================================================

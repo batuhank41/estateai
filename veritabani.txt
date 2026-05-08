@@ -1,0 +1,185 @@
+================================================================================
+                    ESTATEAI / EMLAKPRO - VERİTABANI YAPISI VE BAĞLAMLARI
+================================================================================
+
+Bu dosya, sistemdeki tüm tabloları, sütunlarını, birbirleriyle olan ilişkilerini
+ve SaaS (Multi-tenant) yapısındaki veri izolasyon kurallarını detaylıca açıklar.
+
+Veritabanı Motoru: SQLite (Yerel) ve PostgreSQL (Bulut) destekli çift mod.
+
+================================================================================
+                         1. MERKEZİ TABLOLAR (CORE)
+================================================================================
+db url: https://ietquzberomzssdtqxtb.supabase.co
+
+[companies] - Şirketler Tablosu
+--------------------------------
+- Amacı: SaaS yapısının temelidir. Her şirket için benzersiz bir kayıt tutar.
+- Sütunlar:
+    * id (PK): Şirket benzersiz numarası
+    * name: Şirket adı (Benzersiz)
+    * created_at: Kuruluş tarihi
+- Bağlam: Neredeyse tüm diğer tablolar bu tabloya 'company_id' üzerinden bağlıdır.
+
+[users] - Kullanıcılar (Danışman ve Brokerlar)
+-----------------------------------------------
+- Amacı: Sisteme giriş yapan personelleri tutar.
+- Sütunlar:
+    * id (PK): Kullanıcı benzersiz numarası
+    * company_id (FK): Bağlı olduğu şirket (companies.id)
+    * username: Kullanıcı adı
+    * password_hash: Şifrelenmiş parola
+    * full_name: İsim soyisim
+    * email, phone: İletişim bilgileri
+    * role: 'Broker' (Yönetici) veya 'Danışman'
+    * is_approved: Giriş onayı (Broker için 1, Danışman için 0 başlar)
+    * current_credits: Mevcut kredi miktarı (Varsayılan 100)
+    * is_trial, trial_ends_at: Deneme sürümü takibi
+- Bağlam: Bir kullanıcı silindiğinde, ona bağlı müşteriler ve portföyler sistemde kalır ancak 'Sahibi Yok' durumuna düşebilir.
+
+================================================================================
+                         2. OPERASYONEL TABLOLAR
+================================================================================
+
+[portfolios] - Emlak Portföyleri
+--------------------------------
+- Amacı: Satılık veya kiralık emlak ilanlarını tutar.
+- Sütunlar:
+    * id (PK): İlan numarası
+    * company_id (FK): Şirket bağlantısı
+    * agent_id (FK): İlan sahibi danışman (users.id)
+    * title: İlan başlığı
+    * price: Satış/Kira bedeli
+    * property_type: Daire, Villa, Arsa, vb.
+    * rooms, area_m2: Oda sayısı ve metrekare
+    * city, district, neighborhood: Lokasyon bilgileri
+    * status: active, passive, sold, reserved
+    * listing_type: Satılık, Kiralık
+    * description, features: Detaylar ve özellik listesi
+    * contract_start_date, contract_end_date: Sözleşme tarihleri
+    * image_paths: Görsel yolları (JSON listesi)
+- Bağlam: Şirket içindeki tüm danışmanlar tüm portföyleri görebilir (Ortak Vitrin).
+
+[leads] - Müşteriler
+---------------------
+- Amacı: Potansiyel alıcı ve kiracı adaylarını tutar.
+- Sütunlar:
+    * id (PK): Müşteri numarası
+    * company_id (FK): Şirket bağlantısı
+    * created_by_id (FK): Müşteriyi ekleyen kişi (users.id)
+    * full_name, phone, email: İletişim bilgileri
+    * budget_min, budget_max: Bütçe aralığı
+    * preferred_city, preferred_district, preferred_neighborhood: Bölge tercihleri
+    * preferred_rooms: Oda sayısı tercihi
+    * status: active (aktif), pool (havuz), closed (kapanmış)
+    * pipeline_stage: Satış hunisi aşaması (Yeni Başvuru, Görüşme, vb.)
+- Bağlam: ⚠️ Zırhlı Kasa Kuralı: Danışmanlar sadece kendi ekledikleri müşterileri görür. Broker herkesi görür.
+
+[matches] - Eşleşmeler
+-----------------------
+- Amacı: Leads ve Portfolios arasındaki uyumu skorlar.
+- Sütunlar:
+    * lead_id (FK): Müşteri (leads.id)
+    * portfolio_id (FK): Portföy (portfolios.id)
+    * score: Uyum yüzdesi (0-100)
+    * details: Skorun nedenleri (JSON analizi)
+    * status: pending, presented, rejected, sold
+- Bağlam: Bir müşteri silindiğinde ilgili eşleşmeler otomatik silinir (ON DELETE CASCADE).
+
+================================================================================
+                         3. ETKİLEŞİM VE ANALİZ
+================================================================================
+
+[interactions] - İletişim Geçmişi
+---------------------------------
+- Amacı: Müşteri ile yapılan görüşme notlarını ve ses analizlerini tutar.
+- Sütunlar:
+    * lead_id (FK): İlgili müşteri
+    * user_id (FK): Görüşmeyi yapan danışman
+    * note: Manuel alınan notlar
+    * audio_transcript: Ses kaydının metne dökülmüş hali
+    * ai_analysis: Görüşmenin AI tarafından yapılan analizi
+- Bağlam: Leads tablosuna bağlıdır.
+
+[reminders] - Hatırlatıcılar
+-----------------------------
+- Amacı: Randevular ve takip görevleri için bildirimler.
+- Sütunlar:
+    * lead_id (FK): Bağlı müşteri
+    * user_id (FK): Hatırlatılacak danışman
+    * remind_at: Hatırlatma zamanı
+    * message: Not
+    * is_triggered: Bildirim gösterildi mi? (0/1)
+- Bağlam: Zamanı gelince sistem tray ve popup üzerinden tetiklenir.
+
+[contracts] - Dijital Sözleşmeler
+----------------------------------
+- Amacı: Oluşturulan PDF sözleşme kayıtlarını tutar.
+- Sütunlar:
+    * company_id, agent_id: Şirket ve Danışman bilgisi
+    * lead_id (FK), portfolio_id (FK): Hangi müşteri ve mülk için yapıldı
+    * contract_type: Yer Gösterme, Yetkilendirme, vb.
+    * content: Sözleşmenin tam metni (HTML/RichText)
+- Bağlam: Gelecekteki hukuki uyuşmazlıklar için arşiv görevi görür.
+
+================================================================================
+                         4. FİNANS VE GEÇMİŞ
+================================================================================
+
+[sales] - Satış Kayıtları
+--------------------------
+- Amacı: Kapanan (Satılan/Kiralanan) işlemlerin finansal dökümü.
+- Sütunlar:
+    * portfolio_id, agent_id: İşlemi yapan mülk ve danışman
+    * sale_price: Gerçekleşen satış fiyatı
+    * commission: Şirketin aldığı toplam komisyon
+    * agent_commission: Danışmanın hak ettiği pay
+    * discount: Müşteriye yapılan indirim
+- Bağlam: Broker panelindeki ciro grafiklerini besleyen ana tablodur.
+
+[price_history] - Fiyat Geçmişi
+-------------------------------
+- Amacı: Portföylerin zaman içindeki fiyat değişimlerini izler.
+- Sütunlar:
+    * portfolio_id (FK)
+    * old_price, new_price
+    * change_pct: Değişim yüzdesi
+    * changed_by_id (FK): Fiyatı güncelleyen danışman
+- Bağlam: 'trg_price_change' trigger'ı ile otomatik dolar.
+
+================================================================================
+                         5. AI VE TARAMA VERİLERİ
+================================================================================
+
+[scanned_listings] - Fırsat Tarayıcı Sonuçları
+-----------------------------------------------
+- Amacı: Scanner tarafından Hepsiemlak vb. sitelerden bulunan ilanlar.
+- Sütunlar:
+    * ilan_id: Kaynak sitedeki benzersiz ID
+    * baslik, fiyat, tarih_temiz: İlan özet bilgileri
+    * bolge_url, ilan_link: Kaynak linkler
+- Bağlam: Kullanıcı bu ilanları inceler ve isterse kendi portföyüne aktarır.
+
+[system_management] - Sistem Ayarları
+--------------------------------------
+- Amacı: Global anahtar-değer ayarları.
+- Örnek Kayıtlar:
+    * gemini_api_key: AI işlemleri için anahtar
+    * cost_valuation: Değerleme işleminin kredi maliyeti
+    * gemini_model: Kullanılan yapay zeka modeli
+- Bağlam: DatabaseManager.get_system_management_value() ile okunur.
+
+================================================================================
+                         6. OTOMATİK İŞLEMLER (TRIGGERS)
+================================================================================
+
+1. trg_price_change (AFTER UPDATE OF price ON portfolios):
+   - Eğer bir portföyün fiyatı değişirse, eski fiyatı, yeni fiyatı ve değişim
+     yüzdesini 'price_history' tablosuna otomatik olarak yazar.
+
+2. trg_portfolio_updated (AFTER UPDATE ON portfolios):
+   - Herhangi bir portföy güncellemesinde 'updated_at' sütununu anlık zamanla yeniler.
+
+================================================================================
+                         SONU - VERİTABANI ANALİZİ
+================================================================================
