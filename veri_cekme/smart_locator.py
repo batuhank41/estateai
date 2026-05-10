@@ -34,56 +34,77 @@ class SmartLocator:
         return {}
 
     def hepsiemlak_slugify(self, text: str) -> str:
-        """Metni Hepsiemlak standartlarına çevirir."""
+        """Metni Hepsiemlak standartlarına (radar.txt Bölüm 3) çevirir."""
+        if not text:
+            return ""
         text = str(text).lower()
+        # radar.txt: ç->c, ğ->g, ı->i, ş->s, ö->o, ü->u, space->-
         tr_map = str.maketrans("çğışıöü ", "cgisiou-")
         text = text.translate(tr_map)
         text = re.sub(r'[^a-z0-9-]', '', text)
         return re.sub(r'-+', '-', text).strip('-')
 
-    def get_url(self, il: str, ilce: str, mahalle: str, kategori: str = "daire") -> Optional[str]:
+    def get_url(self, il: str, ilce: str, mahalle: str) -> str:
         """
         Giriş: il, ilce, mahalle
-        Çıktı: Doğrulanmış Hepsiemlak URL slug'ı
+        Çıktı: Temizlenmiş hiyerarşik bölge slug'ı (radar.txt Bölüm 2 & 4'e uygun)
         """
-        # 1. Temizleme ve Hazırlık
+        # 0. Slugify inputs first
         il_s = self.hepsiemlak_slugify(il)
         ilce_s = self.hepsiemlak_slugify(ilce)
-        mah_s = self.hepsiemlak_slugify(mahalle.replace("Mahallesi", "").replace("Mah.", ""))
+        mah_clean = mahalle.replace("Mahallesi", "").replace("Mah.", "").strip()
+        mah_s = self.hepsiemlak_slugify(mah_clean)
 
-        # 2. KATMAN: JSON (O1) Arama
-        slug = self._get_from_json(il_s, ilce_s, mah_s)
-        if slug:
-            return slug
+        # 1. Sözlükten kontrol et (Öncelikli)
+        slug_from_json = self._get_from_json(il_s, ilce_s, mah_s)
+        if slug_from_json:
+            # Sözlükteki '-satilik' takısını temizle çünkü engine kendisi ekleyecek
+            clean_slug = slug_from_json.replace("-satilik", "").replace("-kiralik", "")
+            log.info(f"📍 SmartLocator: Sözlükten eşleşme bulundu: {clean_slug}")
+            return clean_slug
 
-        # 3. KATMAN: Live API / Search (Driver varsa)
-        if self.driver:
-            slug = self._get_from_api(il, ilce, mahalle)
-            if slug:
-                return slug
-
-        # 4. KATMAN: Fallback (V10 Tahmin)
-        return self._fallback_predict(il_s, ilce_s, mah_s)
+        # 2. Sözlükte yoksa hiyerarşik yapı kur
+        raw_parts = [p for p in [il_s, ilce_s, mah_s] if p]
+        
+        # Tekrar edenleri temizle (Örn: istanbul-istanbul -> istanbul)
+        parts = []
+        for p in raw_parts:
+            if p not in parts:
+                parts.append(p)
+        
+        if not parts:
+            return "turkiye"
+            
+        final_slug = "-".join(parts)
+        log.info(f"📍 SmartLocator: Sözlükte yok, tahmin üretildi: {final_slug}")
+        return final_slug
 
     def _get_from_json(self, il: str, ilce: str, mahalle: str) -> Optional[str]:
         """JSON sözlük üzerinden hiyerarşik arama."""
         # Tam Hiyerarşi
-        full_path = f"{il}-{ilce}-{mahalle}"
-        if full_path in self.sozluk:
-            return self.sozluk[full_path].strip('/')
+        if il and ilce and mahalle:
+            full_path = f"{il}-{ilce}-{mahalle}"
+            if full_path in self.sozluk:
+                return self.sozluk[full_path].strip('/')
 
         # İlçe-Mahalle
-        mid_path = f"{ilce}-{mahalle}"
-        if mid_path in self.sozluk:
-            return self.sozluk[mid_path].strip('/')
+        if ilce and mahalle:
+            mid_path = f"{ilce}-{mahalle}"
+            if mid_path in self.sozluk:
+                return self.sozluk[mid_path].strip('/')
 
         # İl-İlçe (Mahalle bulunamadıysa bölge bazlı)
-        region_path = f"{il}-{ilce}"
-        if region_path in self.sozluk:
-            return self.sozluk[region_path].strip('/')
+        if il and ilce:
+            region_path = f"{il}-{ilce}"
+            if region_path in self.sozluk:
+                return self.sozluk[region_path].strip('/')
 
-        # Sadece Mahalle (Güvenlik kontrollü)
-        if mahalle in self.sozluk:
+        # Sadece İlçe (İl-İlçe bulunamadıysa)
+        if ilce and ilce in self.sozluk:
+            return self.sozluk[ilce].strip('/')
+
+        # Sadece Mahalle (Boş değilse kontrol et)
+        if mahalle and mahalle in self.sozluk:
             resmi_slug = self.sozluk[mahalle]
             if not ilce or ilce in resmi_slug:
                 return resmi_slug.strip('/')
@@ -154,8 +175,8 @@ class SmartLocator:
         return None
 
     def _fallback_predict(self, il: str, ilce: str, mahalle: str) -> str:
-        """V10 fallback tahmin mekanizması."""
+        """Fallback tahmin mekanizması (radar.txt Bölüm 4)."""
         parts = [p for p in [il, ilce, mahalle] if p]
         if parts:
-            return "-".join(parts) + "-satilik"
-        return "turkiye-satilik"
+            return "-".join(parts)
+        return "turkiye"
