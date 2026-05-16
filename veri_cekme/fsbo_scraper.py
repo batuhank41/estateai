@@ -21,9 +21,15 @@ from smart_locator import SmartLocator
 
 log = logging.getLogger(__name__)
 
-def _get_drission_page():
+def _get_drission_page(user_data_dir: str = None, browser_port: int = None):
     """DrissionPage için bot korumalı arka plan tarayıcısı ayarlar."""
     co = ChromiumOptions()
+    if user_data_dir:
+        co.set_user_data_path(user_data_dir)
+    
+    if browser_port:
+        co.set_local_port(browser_port)
+
     # Headless modda bot tespitini zorlaştırmak için ayarlar
     co.set_argument('--headless=new')
     co.set_argument('--no-sandbox')
@@ -32,9 +38,17 @@ def _get_drission_page():
     co.set_argument('--disable-blink-features=AutomationControlled')
     co.set_argument('--disable-infobars')
     
-    # Gerçekçi bir User Agent
-    ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+    # 2. Chrome Yolunu Belirt (Sunucu/VDS Uyumluluğu)
+    import os
+    for chrome_path in ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/opt/google/chrome/google-chrome"]:
+        if os.path.exists(chrome_path):
+            co.set_browser_path(chrome_path)
+            break
+
+    # Gerçekçi bir User Agent & Ekran Boyutu
+    ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
     co.set_user_agent(ua)
+    co.set_argument('--window-size=1920,1080')
     
     page = ChromiumPage(co)
     # Navigator.webdriver özelliğini gizle
@@ -80,21 +94,41 @@ def scrape_fsbo(district: str, prop_type: str = "daire", listing_type: str = "sa
                 min_price: str = None, max_price: str = None, 
                 room_count: str = None, building_age: str = None,
                 floor_level: str = None, heating_type: str = None,
-                site_status: str = None, furnished_status: str = None) -> list:
+                site_status: str = None, furnished_status: str = None,
+                user_data_dir: str = None,
+                browser_port: int = None) -> list:
     """
     Hepsiemlak'tan DrissionPage kullanarak sahibinden ilanlarını çek (Fırsat Radarı).
     Daha insansı (human-like) davranışlar eklenmiştir.
     """
     results = []
+    import shutil
+    import tempfile
+    
+    # Her istek için izole bir profil dizini
+    # Eğer API'den gelmediyse (manuel çalıştırma) geçici bir tane oluştur
+    tmp_dir = user_data_dir or tempfile.mkdtemp(prefix="estateai_browser_")
+
     
     # 1. URL İnşası
     locator = SmartLocator()
     base_slug = locator.get_url(city, district, neighborhood)
     islem_tipi = "satilik" if "sat" in listing_type.lower() else "kiralik"
     
+    # Prop type slug (e.g., "daire", "isyeri", "villa")
+    # Hepsiemlak standart slug yapısına göre prop_type'ı ekleyelim
+    prop_slug = prop_type.lower()
+    if prop_slug == "konut": prop_slug = "" # Konut genel bir kategori
+
     # Slug temizleme ve inşası
+    # Sözlükten gelen base_slug'daki -satilik/-kiralik kısmını atıp kendi yapımızı kuruyoruz
     clean_slug = base_slug.replace("-satilik", "").replace("-kiralik", "").replace("-sahibinden", "")
-    target_slug = f"{clean_slug}-{islem_tipi}-sahibinden"
+    
+    # Hedef Slug: [location]-[islem]-sahibinden
+    # Kullanıcı isteği üzerine kategori (daire vb.) URL'den kaldırıldı
+    # Örn: uskudar-satilik-sahibinden
+    slug_parts = [clean_slug, islem_tipi, "sahibinden"]
+    target_slug = "-".join(slug_parts)
     
     from urllib.parse import urlencode
     query_params = {
@@ -106,6 +140,7 @@ def scrape_fsbo(district: str, prop_type: str = "daire", listing_type: str = "sa
     if min_price: query_params["p31"] = re.sub(r'[^0-9]', '', str(min_price))
     if max_price: query_params["p32"] = re.sub(r'[^0-9]', '', str(max_price))
     
+    # Oda sayısı (p63)
     oda_id_map = {
         "1+0": "180401", "1+1": "180402", "2+1": "180404", "2+2": "180405",
         "3+1": "180407", "3+2": "180408", "4+1": "180409", "4+2": "180410",
@@ -121,7 +156,7 @@ def scrape_fsbo(district: str, prop_type: str = "daire", listing_type: str = "sa
 
     page = None
     try:
-        page = _get_drission_page()
+        page = _get_drission_page(user_data_dir=tmp_dir, browser_port=browser_port)
         page.get(url)
         
         # İnsansı bekleme ve yükleme
@@ -213,6 +248,10 @@ def scrape_fsbo(district: str, prop_type: str = "daire", listing_type: str = "sa
     finally:
         if page:
             try: page.quit()
+            except: pass
+        # İzole profil dizinini temizle (Sadece içeride oluşturulduysa)
+        if not user_data_dir:
+            try: shutil.rmtree(tmp_dir)
             except: pass
 
     if not results:

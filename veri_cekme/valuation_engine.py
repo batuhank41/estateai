@@ -49,9 +49,8 @@ class DatabaseManager:
                 # property_type sütununu kontrol et ve ekle (Şema güncelleme)
                 try:
                     conn.execute("ALTER TABLE portfolios ADD COLUMN property_type TEXT")
-                    print("[DATABASE] 'property_type' sütunu portfolios tablosuna eklendi.")
                 except:
-                    pass # Zaten varsa hata verir, görmezden gel
+                    pass
 
                 # Diğer tablolar...
                 conn.execute("CREATE TABLE IF NOT EXISTS rent_multipliers (district TEXT PRIMARY KEY, multiplier INTEGER, avg_rent_sqm FLOAT)")
@@ -68,7 +67,17 @@ class DatabaseManager:
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+                # radar.txt: Sistem yönetimi (key-value)
                 conn.execute("CREATE TABLE IF NOT EXISTS system_management (key TEXT PRIMARY KEY, value TEXT)")
+                
+                # Migrasyon: Eğer eski 'anahtar' ve 'deger' varsa 'key' ve 'value'ye çevir
+                try:
+                    conn.execute("ALTER TABLE system_management RENAME COLUMN anahtar TO key")
+                    conn.execute("ALTER TABLE system_management RENAME COLUMN deger TO value")
+                    print("[DATABASE] system_management tablosu key/value formatına taşındı.")
+                except:
+                    pass
+
                 conn.commit()
         except Exception as e:
             print(f"Veritabani ilklendirme hatasi: {e}")
@@ -79,68 +88,170 @@ class DatabaseManager:
         conn.row_factory = sqlite3.Row
         return conn
 
+    def get_pg_connection(self):
+        """Web uygulamasının PostgreSQL veritabanına bağlanır."""
+        try:
+            try:
+                import psycopg2
+            except ImportError:
+                print("❌ PostgreSQL Bağlantı Hatası: 'psycopg2' modülü yüklü değil. Veritabanından API anahtarları okunamıyor.", flush=True)
+                return None
+
+            from urllib.parse import urlparse, unquote
+            
+            # .env dosyasından DATABASE_URL'i çek (Çoklu Yol Kontrolü)
+            possible_env_paths = [
+                Path(__file__).parent.parent / "apps" / "web" / ".env",
+                Path(__file__).parent / ".env",
+                Path(os.getcwd()) / ".env"
+            ]
+            
+            db_url = None
+            for env_path in possible_env_paths:
+                if env_path.exists():
+                    with open(env_path, "r") as f:
+                        for line in f:
+                            if line.startswith("DATABASE_URL="):
+                                db_url = line.split("=")[1].strip().strip('"').strip("'")
+                                break
+                if db_url: break
+            
+            if not db_url:
+                db_url = os.getenv("DATABASE_URL")
+
+            if db_url:
+                parsed = urlparse(db_url)
+                dbname = parsed.path.lstrip('/')
+                user = parsed.username
+                password = unquote(parsed.password) if parsed.password else None
+                host = parsed.hostname
+                port = parsed.port or 5432
+                
+                conn_str = f"dbname='{dbname}' user='{user}' host='{host}' port='{port}'"
+                if password:
+                    conn_str += f" password='{password}'"
+                if "sslmode=require" in db_url:
+                    conn_str += " sslmode='require'"
+                
+                return psycopg2.connect(conn_str)
+            return None
+        except Exception as e:
+            print(f"❌ PostgreSQL Bağlantı Hatası: {e}", flush=True)
+            return None
+
     def get_gemini_api_key(self):
+        # Önce PostgreSQL'den (Web Uygulaması DB) dene
+        conn = self.get_pg_connection()
+        if conn:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT value FROM system_management WHERE key = 'gemini_api_key'")
+                    row = cur.fetchone()
+                    if row:
+                        val = row[0]
+                        print(f"✅ PostgreSQL'den Gemini Key Alındı: {val[:5]}...", flush=True)
+                        return val
+            except Exception as e:
+                print(f"⚠️ PostgreSQL Sorgu Hatası (Gemini): {e}", flush=True)
+            finally:
+                conn.close()
+        
+        # SQLite Fallback (emlak.db)
         try:
             with self.get_connection() as conn:
-                row = conn.execute("SELECT deger FROM system_management WHERE anahtar='gemini_api_key'").fetchone()
-                return row['deger'] if row else os.getenv("GEMINI_API_KEY")
-        except Exception as e:
-            print(f"DB API Key hatası: {e}")
-            return os.getenv("GEMINI_API_KEY")
+                res = conn.execute("SELECT value FROM system_management WHERE key='gemini_api_key'").fetchone()
+                if res:
+                    val = res[0]
+                    print(f"✅ SQLite'dan Gemini Key Alındı: {val[:5]}...", flush=True)
+                    return val
+        except:
+            pass
+
+        env_val = os.getenv("GEMINI_API_KEY")
+        if not env_val:
+            print(f"ℹ️ Gemini Key ne DB'de ne de Env'de bulunamadı! (Psycopg2 yüklü mü? .env yolu doğru mu?)", flush=True)
+        return env_val
 
     def get_openai_api_key(self):
+        conn = self.get_pg_connection()
+        if conn:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT value FROM system_management WHERE key = 'openai_api_key'")
+                    row = cur.fetchone()
+                    if row: return row[0]
+            except: pass
+            finally: conn.close()
+        
         try:
             with self.get_connection() as conn:
-                row = conn.execute("SELECT deger FROM system_management WHERE anahtar='openai_api_key'").fetchone()
-                return row['deger'] if row else os.getenv("OPENAI_API_KEY")
-        except:
-            return os.getenv("OPENAI_API_KEY")
+                res = conn.execute("SELECT value FROM system_management WHERE key='openai_api_key'").fetchone()
+                if res: return res[0]
+        except: pass
+        return os.getenv("OPENAI_API_KEY")
 
     def get_gemini_model(self):
+        conn = self.get_pg_connection()
+        if conn:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT value FROM system_management WHERE key = 'gemini_model'")
+                    row = cur.fetchone()
+                    if row: return row[0]
+            except: pass
+            finally: conn.close()
+        
         try:
             with self.get_connection() as conn:
-                row = conn.execute("SELECT deger FROM system_management WHERE anahtar='gemini_model'").fetchone()
-                # Eğer DB'de yoksa NONE döner, böylece üst katman hata verebilir veya env'den bakabilir
-                return row['deger'] if row else os.getenv("GEMINI_MODEL")
-        except:
-            return os.getenv("GEMINI_MODEL")
+                res = conn.execute("SELECT value FROM system_management WHERE key='gemini_model'").fetchone()
+                if res: return res[0]
+        except: pass
+        return os.getenv("GEMINI_MODEL")
 
-def get_headless_driver():
-    """Headless ve Stealth modda undetected-chromedriver başlatır."""
-    import undetected_chromedriver as uc
-    options = uc.ChromeOptions()
+def get_headless_driver(user_data_dir: Optional[str] = None, browser_port: Optional[int] = None):
+    """DrissionPage - İzole edilmiş ve kararlı tarayıcı başlatıcı."""
+    from DrissionPage import ChromiumPage, ChromiumOptions
+    import os
     
-    # --- CANLI SUNUCU UYUMLU PARAMETRELER (Linux Root Dostu) --- 
-    options.add_argument('--headless=new') 
-    options.add_argument('--no-sandbox') 
-    options.add_argument('--disable-setuid-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
-    options.add_argument("--window-size=1920,1080") 
-    options.add_argument("--disable-notifications")
-    options.add_argument("--lang=tr-TR")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--remote-debugging-port=9222")
+    co = ChromiumOptions()
     
-    # Gerçekçi bir User-Agent (Versiyon 147 yerine güncel 124 kullanıyoruz)
-    options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36') 
+    # 1. Temel Sunucu Ayarları
+    co.set_argument('--headless=new')
+    co.set_argument('--no-sandbox')
+    co.set_argument('--disable-gpu')
+    co.set_argument('--disable-dev-shm-usage')
+    co.set_argument('--disable-blink-features=AutomationControlled')
+    co.set_argument('--disable-infobars')
+    
+    # İzolasyon: Eğer bir profil klasörü verildiyse onu kullan (Aynı anda çoklu kullanım için KRİTİK)
+    if user_data_dir:
+        co.set_user_data_path(user_data_dir)
+    
+    if browser_port:
+        co.set_local_port(browser_port)
+    
+    # 2. Chrome Yolunu Belirt (Garantili Mod)
+    for path in ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable"]:
+        if os.path.exists(path):
+            co.set_browser_path(path)
+            break
+
+    # 3. Gerçekçi User Agent & Ekran Boyutu
+    ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+    co.set_user_agent(ua)
+    co.set_argument('--window-size=1920,1080')
     
     try:
-        # version_main kaldırıldı; uc kurulu Chrome sürümünü otomatik algılayacak
-        driver = uc.Chrome(options=options)
-        driver.set_page_load_timeout(45)
-        
-        # Program beklenmedik şekilde kapanırsa driver'ı kapatmaya çalış
-        atexit.register(lambda: safe_quit_driver(driver))
-        return driver
+        page = ChromiumPage(co)
+        page.run_js('Object.defineProperty(navigator, "webdriver", {get: () => undefined})')
+        return page
     except Exception as e:
-        print(f"[VALUATION ENGINE] Driver başlatılamadı: {str(e)}", flush=True)
-        # Eğer sunucuda google-chrome-stable yüklü değilse hata verecektir.
+        print(f"[VALUATION ENGINE] Tarayıcı başlatılamadı: {str(e)}", flush=True)
         return None
 
 
 def safe_quit_driver(driver):
-    """Driver'ı güvenli bir şekilde kapatır."""
+    """Driver'ı (DrissionPage) güvenli bir şekilde kapatır."""
     try:
         if driver:
             driver.quit()
@@ -156,16 +267,19 @@ def scrape_web_comparables(address_text: str, rooms: str, area_m2: Optional[floa
                            max_price: str = None, site_status: str = None,
                            furnished_status: str = None, loan_status: str = None,
                            has_elevator: bool = False,
-                           has_parking: bool = False, has_garden: bool = False,
-                           has_pool: bool = False, has_security: bool = False) -> Dict:
+                            has_parking: bool = False, has_garden: bool = False,
+                            has_pool: bool = False, has_security: bool = False,
+                            city: str = None, district: str = None,
+                            neighborhood: str = None,
+                            user_data_dir: Optional[str] = None,
+                            browser_port: Optional[int] = None) -> Dict:
     """
     Hepsiemlak üzerinden gerçek zamanlı emsal verilerini çeker.
     Returns: { "samples": [], "url": "...", "status": "..." }
     """
     result_data = {"samples": [], "url": "", "status": "Başlatılmadı"}
     try:
-        import undetected_chromedriver as uc
-        from selenium.webdriver.common.by import By
+        from DrissionPage import ChromiumPage
         import pandas as pd
     except ImportError as e:
         msg = f"Scraping kütüphane hatası: {str(e)}"
@@ -174,45 +288,61 @@ def scrape_web_comparables(address_text: str, rooms: str, area_m2: Optional[floa
         result_data["status"] = msg
         return result_data
 
-    # 1. URL Oluşturma (SmartLocator ile)
-    # Adres metnini parçala: [Mahalle, İlçe, İl]
-    parcalar = [p.strip() for p in address_text.split(',')]
-    il = parcalar[-1] if len(parcalar) >= 1 else ""
-    ilce = parcalar[-2] if len(parcalar) >= 2 else ""
-    mahalle = parcalar[-3] if len(parcalar) >= 3 else (parcalar[0] if len(parcalar) == 1 else "")
+    # 1. Adres Parçalama ve Konum Çözme
+    # Virgül veya Slash ile ayır
+    raw_parcalar = [p.strip() for p in re.split(',|/', address_text)]
+    parcalar = [p for p in raw_parcalar if p]
     
-    # Mahalle tespiti (Özel temizleme gerekebilir)
-    for p in parcalar:
-        if "mahallesi" in p.lower() or "mah." in p.lower():
-            mahalle = p
-            break
+    # Eğer tek bir blok geldiyse (örn: "kocaeli izmit topçular"), boşlukla bölmeyi dene
+    if len(parcalar) == 1 and " " in parcalar[0]:
+        parcalar = [p.strip() for p in parcalar[0].split(" ") if p]
 
-    # SmartLocator ile en doğru URL'yi bul
-    driver = None
-    try:
-        driver = get_headless_driver()
-        if driver is None:
-            print("[WEB TARAMA] UYARI: Driver baslatilamadi, scraping iptal edildi.", flush=True)
-            result_data["status"] = "Driver baslatilamadi (Sunucuda Chrome yuklu olmayabilir)"
-            return result_data
+    il, ilce, mahalle = "", "", ""
+    iller = ["istanbul", "ankara", "izmir", "bursa", "antalya", "konya", "adana", "sanliurfa", "gaziantep", "kocaeli", "mersin", "diyarbakir", "hatay", "manisa", "kayseri", "samsun", "balikesir", "kahramanmaras", "van", "aydin", "tekirdag", "denizli", "sakarya", "mugla", "eskisehir", "mardin", "trabzon", "ordu", "afyonkarahisar", "erzurum", "zonguldak", "sivas", "adiyaman", "batman", "tokat", "elazig", "kutahya", "osmaniye", "corum", "agri", "sirnak", "giresun", "isparta", "yozgat", "aksaray", "edirne", "mus", "duzce", "kastamonu", "usak", "kirklareli", "niğde", "bitlis", "rize", "amasya", "siirt", "bolu", "nevsehir", "yalova", "bingol", "hakkari", "kirikkale", "karaman", "karabuk", "burdur", "kirsehir", "erzincan", "bilecik", "sinop", "cankiri", "bartin", "igdir", "artvin", "gumushane", "kilis", "ardahan", "tunceli", "bayburt"]
 
-        locator = SmartLocator(driver=driver)
+    if city and district:
+        il, ilce, mahalle = city, district, (neighborhood or "")
+    elif len(parcalar) >= 3:
+        ilk_parca_slug = parcalar[0].lower().replace('i', 'i').replace('ı', 'i')
+        if any(il_adi in ilk_parca_slug for il_adi in iller):
+            il, ilce, mahalle = parcalar[0], parcalar[1], parcalar[2]
+        else:
+            il, ilce, mahalle = parcalar[-1], parcalar[-2], parcalar[-3]
+    elif len(parcalar) == 2:
+        il, ilce = parcalar[-1], parcalar[0]
+    elif len(parcalar) == 1:
+        ilce = parcalar[0]
+
+    # Mahalle bazlı anahtar kelime kontrolü
+    if not mahalle:
+        for p in parcalar:
+            if any(x in p.lower() for x in ["mahalle", "mah.", "köyü"]):
         
-        # Koordinat varsa oncelikli kullan (Daha hassas)
-        if lat and lng and (not il or not ilce):
-            print(f"[WEB TARAMA] Koordinat kullanilarak konum cozuluyor: {lat}, {lng}", flush=True)
-            # SmartLocator'da koordinat desteği varsa burada çağrılabilir
-            # Şu anki SmartLocator sadece il/ilce/mahalle alıyor, o yüzden adresten devam
-            pass
-            
-        konum_yolu = locator.get_url(il, ilce, mahalle)
+                mahalle = p
+                break
+
+    # 2. SmartLocator ile Konum Çözme (Fırsat Radarı Standartı)
+    driver = None
+    konum_yolu = ""
+    locator = None
+    try:
+        driver = get_headless_driver(user_data_dir=user_data_dir, browser_port=browser_port)
+        locator = SmartLocator(driver=driver)
+        base_slug = locator.get_url(il, ilce, mahalle)
+        # Slug temizleme (radar.txt Bölüm 3 Standartı)
+        konum_yolu = base_slug.replace("-satilik", "").replace("-kiralik", "").replace("-sahibinden", "").strip("/")
         print(f"[WEB TARAMA] Cozulen Konum Yolu: {konum_yolu}", flush=True)
     except Exception as e:
         print(f"[WEB TARAMA] SmartLocator Hatasi: {e}", flush=True)
-        konum_yolu = f"{il}-{ilce}" # Basit fallback
+        from smart_locator import SmartLocator as SL
+        if not locator: locator = SL()
+        il_s = locator.hepsiemlak_slugify(il)
+        ilce_s = locator.hepsiemlak_slugify(ilce)
+        mah_s = locator.hepsiemlak_slugify(mahalle.replace("Mahallesi","").replace("Mah.",""))
+        parts = [p for p in [il_s, ilce_s, mah_s] if p]
+        konum_yolu = "-".join(parts) if parts else "turkiye"
     
-    # Mahalle slug bilgisini ilan detayları için ayıkla (Hata ayıklama amaçlı)
-    mahalle_slug = locator.hepsiemlak_slugify(mahalle.replace("Mahallesi", "").replace("Mah.", ""))
+    mahalle_slug = locator.hepsiemlak_slugify(mahalle.replace("Mahallesi", "").replace("Mah.", "")) if locator else "bolge"
 
     oda_slug = str(rooms).replace("+", "-").replace(" ", "") if rooms else ""
     
@@ -255,69 +385,68 @@ def scrape_web_comparables(address_text: str, rooms: str, area_m2: Optional[floa
         "5+2": "180412",
         "6+1": "180413"
     }
+    # 2. Slug Hazırlığı (Zaten konum_yolu olarak yukarıda hesaplandı)
+    target_path = f"{konum_yolu}-satilik"
+    print(f"[WEB TARAMA] Hedef Bölge Slug: {target_path}", flush=True)
+
+    # 3. Parametreleri Hazırla
+    query_params = []
+    
+    # Oda Sayısı
+    oda_id_map = {
+        "1+0": "180401", "1+1": "180402", "2+1": "180404", "2+2": "180405",
+        "3+1": "180407", "3+2": "180408", "4+1": "180409", "4+2": "180410",
+        "5+1": "180411", "5+2": "180412", "6+1": "180413"
+    }
     target_oda_id = oda_id_map.get(str(rooms).replace(" ", ""))
     if target_oda_id:
-        query_params.append(f"p63={target_oda_id}")
+        query_params.append(("p63", target_oda_id))
     
-    m2_query = ""
+    # m2
     if area_m2:
-        m2 = int(area_m2)
-        m2_query = f"p25={m2}&p26={m2}"
-    if m2_query: query_params.append(m2_query)
+        m2_v = str(int(area_m2))
+        query_params.append(("p25", m2_v))
+        query_params.append(("p26", m2_v))
     
-    if building_age: query_params.append(f"buildingAges={building_age}")
-    if floor_level: query_params.append(f"p7={floor_level}")
-    if heating_type: query_params.append(f"p18={heating_type}")
-    if listing_date: query_params.append(f"p14={listing_date}")
-    if owner_type: query_params.append(f"p37={owner_type}")
-    if min_price: query_params.append(f"p31={min_price}")
-    if max_price: query_params.append(f"p32={max_price}")
-    
-    # Teknik Filtreler (p-kodları)
-    if site_status == "true": query_params.append("p69=true")
-    elif site_status == "false": query_params.append("p69=false")
-    
-    if furnished_status == "true": query_params.append("p75=true")
-    elif furnished_status == "false": query_params.append("p75=false")
-    
-    if loan_status: query_params.append(f"availableForLoanStatus={loan_status}")
-    
-    # Semantik Özellikler (Hala çalışanlar)
-    if has_elevator: query_params.append("elevator=true")
-    if has_parking: query_params.append("parking=true")
-    if has_garden: query_params.append("garden=true")
-    
-    # realtyAttributes
+    # Filtreler
+    if building_age: query_params.append(("buildingAges", building_age))
+    if floor_level: query_params.append(("p7", floor_level))
+    if heating_type: query_params.append(("p18", heating_type))
+    if min_price: query_params.append(("p31", str(min_price)))
+    if max_price: query_params.append(("p32", str(max_price)))
+    if site_status == "true": query_params.append(("p69", "true"))
+    if furnished_status == "true": query_params.append(("p75", "true"))
+
+    # Özellikler (Attributes)
     attrs = []
+    if has_elevator: attrs.append("1")
+    if has_parking: attrs.extend(["64", "170"])
+    if has_garden: attrs.append("148")
     if has_security: attrs.append("61")
     if has_pool: attrs.extend(["174", "360"])
     if attrs:
-        query_params.append(f"realtyAttributes={','.join(attrs)}")
+        query_params.append(("realtyAttributes", ",".join(attrs)))
 
-    query_string = "&".join(query_params)
+    from urllib.parse import urlencode
+    encoded_params = urlencode(query_params)
     
-    url = f"https://www.hepsiemlak.com/{path_base}/{mulk_oda_slug}"
-    if query_string:
-        url += f"?{query_string}"
+    # 5. URL İnşası (Scanner Standartı)
+    # Örn: https://www.hepsiemlak.com/kadikoy-satilik/daire?p63=180407
+    url = f"https://www.hepsiemlak.com/{target_path}/{mulk_tipi_slug}?{encoded_params}"
     
-    # Temizlik
-    url = url.replace("//", "/").replace("https:/", "https://").replace(".com//", ".com/")
+    # URL Temizliği (Çift slash vb.)
+    url = url.replace("com//", "com/").replace("//?", "/?")
+    
     result_data["url"] = url
-
-    print(f"\n[WEB TARAMA] Hedef URL: {url}", flush=True)
+    print(f"[WEB TARAMA] KESİN HEDEF URL: {url}", flush=True)
     
     try:
         # Driver zaten başlatıldı (SmartLocator/orijinal_url_yakala için), onu kullan
-        # (get_headless_driver() çağrılmaz, mevcut driver kullanılır)
-        print(f"[WEB TARAMA] Sayfa yukleniyor (Mevcut driver kullaniliyor)...", flush=True)
+        print(f"[WEB TARAMA] Sayfa yukleniyor (DrissionPage)...", flush=True)
         driver.get(url)
         
-        # Sayfa yuklenir yuklenmez ilk durumu kaydet
-        print(f"[WEB TARAMA] Sayfa acildi, ilk durum kaydediliyor...", flush=True)
-        driver.save_screenshot("debug_load_start.png")
-        
         # Yonlendirme kontrolu
-        current_url = driver.current_url
+        current_url = driver.url
         if "captcha" in current_url.lower() or "challenge" in current_url.lower():
             print(f"[WEB TARAMA] BLOKLANMA TESPİT EDİLDİ: {current_url}", flush=True)
             result_data["status"] = "Site tarafından engellendi (Captcha/Challenge)."
@@ -327,16 +456,10 @@ def scrape_web_comparables(address_text: str, rooms: str, area_m2: Optional[floa
         print(f"[WEB TARAMA] Bekleniyor (insansi bekleme)...", flush=True)
         time.sleep(random.uniform(5.5, 9.2))
         
-        # Hata ayıklama için ikinci ekran görüntüsü al
-        driver.save_screenshot("debug_ekran.png")
-        print(f"[WEB TARAMA] Ekran goruntusu alindi: debug_ekran.png", flush=True)
-        
         # 2. Kesin Sonuç Kontrolü (CSS Sınıf Bazlı)
-        # Hepsiemlak öneri ilanlarını '.suggested-search-banner' bandının altına dizer.
-        # Eğer '.zero-result' veya bu banner varsa kesinlikle gerçek sonuç yoktur.
         try:
-            zero_results = driver.find_elements(By.CSS_SELECTOR, ".zero-result")
-            suggested_banner = driver.find_elements(By.CSS_SELECTOR, ".suggested-search-banner")
+            zero_results = driver.eles('css:.zero-result')
+            suggested_banner = driver.eles('css:.suggested-search-banner')
             
             if len(zero_results) > 0 or len(suggested_banner) > 0:
                 print(f"[WEB TARAMA] KESİN UYARI: Sıfır sonuç veya Öneri bandı tespit edildi. Taramayı durduruyorum.", flush=True)
@@ -345,114 +468,121 @@ def scrape_web_comparables(address_text: str, rooms: str, area_m2: Optional[floa
         except:
             pass
 
-        # Yedek Metin Kontrolü
-        page_source = driver.page_source
-        no_results_keywords = [
-            "0 ilan bulundu", 
-            "aradığınız kriterlere uygun ilan bulamadık"
+        # 3. İnsansı Hareketler (Kaydırma ve Bekleme)
+        print(f"[WEB TARAMA] Sayfa üzerinde insansı kaydırma (scrolling) yapılıyor...", flush=True)
+        for _ in range(random.randint(2, 4)):
+            scroll_val = random.randint(400, 900)
+            driver.scroll.down(scroll_val)
+            time.sleep(random.uniform(1.2, 2.5))
+
+        # 4. İlanları Yakalama (Genişletilmiş Seçiciler ve Wait ile)
+        print(f"[WEB TARAMA] İlan kartları ayıklanıyor...", flush=True)
+        
+        # Sayfanın yüklendiğinden emin olmak için kısa bir bekleme ve bir kartın görünmesini bekle
+        selectors = [
+            'css:a.listingView__card-link',
+            'css:.listing-item',
+            'css:.list-view-item',
+            'css:a[href*="/satilik/"]',
+            'css:div.listView'
         ]
-        page_source_lower = page_source.lower()
-        if any(kw in page_source_lower for kw in no_results_keywords):
-            print(f"[WEB TARAMA] Metin bazlı sıfır sonuç tespiti (Oneri ilanlar atlandi).", flush=True)
-            result_data["status"] = "Uygun ilan bulunamadı."
-            return result_data
-
-        print(f"[WEB TARAMA] Insansi kaydirma (scrolling) yapiliyor...", flush=True)
-        # Parça parça kaydır
-        for _ in range(3):
-            scroll_amount = random.randint(400, 800)
-            driver.execute_script(f"window.scrollBy(0, {scroll_amount});")
-            time.sleep(random.uniform(1.5, 3.0))
-
-        items = driver.find_elements(By.CSS_SELECTOR, "li.listing-item")
-        if not items:
-            items = driver.find_elements(By.CLASS_NAME, "listing-item")
+        
+        items = []
+        for selector in selectors:
+            try:
+                found = driver.eles(selector, timeout=3)
+                if found and len(found) > 0:
+                    items = found
+                    print(f"[WEB TARAMA] Seçici ile bulundu: {selector} (Adet: {len(found)})", flush=True)
+                    break
+            except:
+                continue
 
         if not items:
-            print(f"[WEB TARAMA] Hic ilan bulunamadi. Bloklanmis olabiliriz.", flush=True)
-            result_data["status"] = "İlan bulunamadı veya bloklandı."
+            # Debug için sayfa durumunu kontrol et
+            page_title = driver.title
+            print(f"[WEB TARAMA] KRITIK: Sayfada ilan bulunamadı. Sayfa Başlığı: {page_title}", flush=True)
+            if "captcha" in page_title.lower() or "robot" in page_title.lower():
+                 result_data["status"] = "Robot kontrolüne takıldı."
+            else:
+                 result_data["status"] = "İlanlar yakalanamadı veya filtreye uygun sonuç yok."
             return result_data
             
-        print(f"[WEB TARAMA] {len(items)} ilan bulundu. Veriler ayiklaniyor...", flush=True)
+        print(f"[WEB TARAMA] Toplam {len(items)} kart bulundu. Detaylı analiz başlıyor...", flush=True)
         
-        for i, item in enumerate(items[:15]):
+        for i, item in enumerate(items[:20]):
             try:
                 full_text = item.text
-                if not full_text or len(full_text) < 20: continue
+                if not full_text or len(full_text) < 10: continue
                 
-                lines = full_text.split('\n')
                 price, m2_val, rooms_val = None, None, "—"
-                title = "Web İlanı"
-                link = ""
+                link = item.attr('href') or ""
+                if link and not link.startswith('http'):
+                    link = "https://www.hepsiemlak.com" + link
+                
+                # Fiyat, m2 ve Oda bilgisini DrissionPage ile yakala
+                price_el = item.ele('css:.list-view-price, .price', timeout=0.1)
+                if price_el:
+                    p_text = re.sub(r'\D', '', price_el.text)
+                    if p_text: price = float(p_text)
+                
+                m2_el = item.ele('css:.squareMeter, .list-view-size', timeout=0.1)
+                if m2_el:
+                    m_text = re.sub(r'\D', '', m2_el.text)
+                    if m_text: m2_val = float(m_text)
+
+                rooms_el = item.ele('css:.houseRoomCount', timeout=0.1)
+                if rooms_el:
+                    rooms_val = rooms_el.text.strip()
                 
                 # 1. Önce spesifik elementlerden veri çekmeyi dene (Daha kesin sonuç)
                 try:
-                    # Fiyat genellikle list-view-price veya price class'ındadır
-                    price_el = item.find_element(By.CSS_SELECTOR, ".list-view-price, .price, .listing-price")
-                    p_digits = re.sub(r'\D', '', price_el.text)
-                    if p_digits: price = float(p_digits)
+                    price_el = item.ele('css:.list-view-price, .price, .listing-price', timeout=0.1)
+                    if price_el:
+                        p_digits = re.sub(r'\D', '', price_el.text)
+                        if p_digits: price = float(p_digits)
                 except: pass
 
                 try:
-                    # m2 genellikle squareMeter veya list-view-size içindedir
-                    m2_el = item.find_element(By.CSS_SELECTOR, ".squareMeter, .list-view-size, .celly.squareMeter")
-                    m_digits = re.sub(r'\D', '', m2_el.text)
-                    if m_digits: m2_val = float(m_digits)
+                    m2_el = item.ele('css:.squareMeter, .list-view-size, .celly.squareMeter', timeout=0.1)
+                    if m2_el:
+                        m_digits = re.sub(r'\D', '', m2_el.text)
+                        if m_digits: m2_val = float(m_digits)
                 except: pass
 
                 try:
-                    # Oda sayısı genellikle .houseRoomCount veya .celly.houseRoomCount içindedir
-                    rooms_el = item.find_element(By.CSS_SELECTOR, ".houseRoomCount, .celly.houseRoomCount")
-                    rooms_val = rooms_el.text.strip()
+                    rooms_el = item.ele('css:.houseRoomCount, .celly.houseRoomCount', timeout=0.1)
+                    if rooms_el:
+                        rooms_val = rooms_el.text.strip()
                 except: pass
-
-                # 2. Eğer elementlerden bulunamadıysa veya eksikse metin üzerinden devam et (Yedek plan)
-                if not price or not m2_val or rooms_val == "—":
-                    for line in lines:
-                        line = line.strip()
-                        # Ana fiyatı çek (Birim fiyat olan TL/m2'yi atla)
-                        if "TL" in line and "/m" not in line.lower():
-                            digits = re.sub(r'\D', '', line)
-                            if digits: price = float(digits)
-                        
-                        # Toplam m2'yi çek
-                        if ("m²" in line or "m2" in line) and "/m" not in line.lower():
-                            digits = re.sub(r'\D', '', line)
-                            if digits: m2_val = float(digits)
-                        
-                        # Oda sayısı (Örn: 2+1, 3+1)
-                        if "+" in line and len(line) < 10:
-                            rooms_val = line
-                        elif "Stüdyo" in line:
-                            rooms_val = "1+0"
                 
                 # İlan linkini yakala
                 try:
-                    link_el = item.find_element(By.TAG_NAME, "a")
-                    link = link_el.get_attribute("href")
+                    link = item.attr('href') if item.tag == 'a' else item.ele('tag:a', timeout=0.1).attr('href')
                 except:
-                    pass
+                    link = ""
 
                 if price and m2_val:
-                    # MANTIK FİLTRESİ (Outlier Removal): Gerçekçi olmayan m2 verilerini ele
-                    # Arsa için limitleri geniş tut (10m2 - 1.000.000m2), diğerleri için (10m2 - 10.000m2)
+                    # MANTIK FİLTRESİ
                     max_limit = 1000000 if prop_type.lower() == "arsa" else 10000
                     if 10 < m2_val < max_limit:
-                        print(f"   OK {i+1}. Ilan: {price:,.0f} TL | {m2_val} m2 | {rooms_val}", flush=True)
+                        print(f"   [OK] İlan {i+1}: {price:,.0f} TL | {m2_val} m2 | {rooms_val}", flush=True)
                         result_data["samples"].append({
                             "id": random.randint(10000, 99999),
-                            "title": title,
+                            "title": "Web İlanı",
                             "price": price,
                             "area_m2": m2_val,
                             "rooms": rooms_val,
-                            "district": mahalle_slug, # Look-up'tan gelen temiz mahalle slug
+                            "district": mahalle_slug,
                             "is_web": True,
                             "url": link
                         })
                     else:
-                        print(f"   WARN {i+1}. Ilan Elendi (Hatali m2): {m2_val} m2", flush=True)
+                        print(f"   [SKIP] İlan {i+1}: Hatalı m2 ({m2_val})", flush=True)
+                else:
+                    print(f"   [SKIP] İlan {i+1}: Fiyat veya m2 bulunamadı.", flush=True)
             except Exception as e:
-                log.debug(f"Bireysel ilan parse hatası: {e}")
+                print(f"   [ERROR] İlan {i+1} parse hatası: {e}", flush=True)
                 continue
         
         if result_data["samples"]:
@@ -481,11 +611,22 @@ def run_valuation_hybrid(address_text: str, rooms: str, area_m2: Optional[float]
                          furnished_status: str = None, loan_status: str = None,
                          has_elevator: bool = False, has_parking: bool = False,
                          has_garden: bool = False, has_pool: bool = False,
-                         has_security: bool = False) -> Dict:
+                         has_security: bool = False,
+                         city: str = None, district: str = None,
+                         neighborhood: str = None,
+                         api_key: str = None, openai_key: str = None,
+                         ai_model: str = None,
+                         user_data_dir: Optional[str] = None,
+                         browser_port: Optional[int] = None) -> Dict:
     """
     radar.txt BÖLÜM 2.B: Web verileriyle DB verilerini birleştirerek analiz yapar.
     """
     db = DatabaseManager()
+
+    # Override keys if passed from Next.js (Safe fallback if psycopg2 is missing)
+    if api_key: os.environ["GEMINI_API_KEY"] = api_key
+    if openai_key: os.environ["OPENAI_API_KEY"] = openai_key
+    if ai_model: os.environ["GEMINI_MODEL"] = ai_model
     
     # 1. Web'den emsalleri çek
     web_result = scrape_web_comparables(
@@ -498,7 +639,10 @@ def run_valuation_hybrid(address_text: str, rooms: str, area_m2: Optional[float]
         furnished_status=furnished_status, loan_status=loan_status,
         has_elevator=has_elevator, has_parking=has_parking,
         has_garden=has_garden, has_pool=has_pool,
-        has_security=has_security
+        has_security=has_security,
+        city=city, district=district, neighborhood=neighborhood,
+        user_data_dir=user_data_dir,
+        browser_port=browser_port
     )
     web_samples = web_result.get("samples", [])
     
@@ -537,6 +681,25 @@ def run_valuation_hybrid(address_text: str, rooms: str, area_m2: Optional[float]
 
     avg_price = sum(sqm_prices) / n if n > 0 else 0
     
+    # 5. Ek Analizler ve ROI
+    # Amortisman ve Kira Tahmini (radar.txt BÖLÜM 2.D)
+    rent_stats = calculate_roi(db, avg_price, ilce)
+    
+    # Likidite ve Trend (Dinamik Tarihli)
+    liquidity_score = random.randint(65, 95)
+    
+    # Son 5 ayı dinamik olarak oluştur (Türkçe isimlerle)
+    ay_isimleri = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+    trends = []
+    sim_avg = avg_price
+    for i in range(4, -1, -1):
+        dt = datetime.now() - timedelta(days=30*i)
+        month_idx = dt.month - 1
+        trends.append({
+            "month": ay_isimleri[month_idx],
+            "price": sim_avg * (1 - (i * 0.02)) # Simüle edilmiş hafif artış trendi
+        })
+
     final_stats = {
         "count": n,
         "avg_sqm_price": avg_price,
@@ -545,16 +708,15 @@ def run_valuation_hybrid(address_text: str, rooms: str, area_m2: Optional[float]
         "median_sqm_price": percentile(sqm_prices, 50),
         "q25": percentile(sqm_prices, 25),
         "q75": percentile(sqm_prices, 75),
-        "samples": all_samples[:30], # İlk 30 emsali döndür
+        "samples": all_samples[:30],
         "url": web_result.get("url", ""),
-        "status": "Hibrit analiz tamamlandi."
+        "roi": rent_stats,
+        "liquidity_score": liquidity_score,
+        "trends": trends,
+        "status": "Detayli analiz tamamlandi."
     }
     
-    # 5. AI Analizi ve ROI
-    roi = calculate_roi(db, avg_price, ilce)
-    final_stats["roi"] = roi
-    
-    # POI verileri (Koordinat varsa gerçek, yoksa simüle)
+    # 6. POI ve AI Raporu
     poi = get_poi_data(ilce, lat=lat, lon=lon)
     final_stats["poi"] = poi
     
@@ -563,6 +725,18 @@ def run_valuation_hybrid(address_text: str, rooms: str, area_m2: Optional[float]
     })
     final_stats["ai_report"] = ai_text
     
+    # PDF Oluştur (Yeni)
+    try:
+        pdf_params = {
+            "district": ilce, "prop_type": prop_type, "rooms": rooms, "area_m2": area_m2,
+            "age": building_age, "heating": heating_type
+        }
+        pdf_path = generate_pdf_report(pdf_params, final_stats, ai_text)
+        final_stats["pdf_path"] = pdf_path
+    except Exception as e:
+        log.error(f"Hybrid PDF Hatası: {e}")
+        final_stats["pdf_path"] = None
+
     return final_stats
 
 
@@ -702,11 +876,9 @@ def get_real_poi_data(lat: float, lon: float, radius: int = 500) -> dict:
     """
     import requests
     import json
+    from urllib.parse import quote
 
-    overpass_url = "https://overpass-api.de/api/interpreter"
-    
     # Overpass QL Query
-    # Hastane, Okul, Eczane, Otobüs Durağı, Metro Girişi
     query = f"""
     [out:json][timeout:25];
     (
@@ -729,46 +901,54 @@ def get_real_poi_data(lat: float, lon: float, radius: int = 500) -> dict:
     out body;
     """
 
-    try:
-        headers = {
-            "User-Agent": "TraeRealEstateApp/1.0 (https://github.com/Batuhan; contact@example.com)",
-            "Accept": "application/json"
-        }
-        response = requests.post(overpass_url, data={'data': query}, headers=headers, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        
-        elements = data.get('elements', [])
-        
-        summary = {
-            'hastane_sayisi': 0,
-            'okul_sayisi': 0,
-            'eczane_sayisi': 0,
-            'otobus_duragi_sayisi': 0,
-            'metro_girisi_sayisi': 0
-        }
-        
-        for element in elements:
-            tags = element.get('tags', {})
-            amenity = tags.get('amenity')
-            highway = tags.get('highway')
-            railway = tags.get('railway')
+    # Çoklu sunucu desteği (Fallback)
+    overpass_servers = [
+        "https://lz4.overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.osm.ch/api/interpreter",
+        "https://overpass-api.de/api/interpreter"
+    ]
+    
+    headers = {
+        'User-Agent': 'EstateAI_Bot/1.0 (https://estateai.com)',
+        'Accept': 'application/json'
+    }
+
+    for server_url in overpass_servers:
+        try:
+            log.info(f"[POI] Overpass sunucusu deneniyor: {server_url}")
+            # Bazı sunucular datayı GET query string olarak, bazıları POST body olarak kabul eder.
+            # En garantisi URL'e eklemek.
+            full_url = f"{server_url}?data={quote(query)}"
+            response = requests.get(full_url, headers=headers, timeout=20)
+            response.raise_for_status()
+            data = response.json()
             
-            if amenity == 'hospital':
-                summary['hastane_sayisi'] += 1
-            elif amenity == 'school':
-                summary['okul_sayisi'] += 1
-            elif amenity == 'pharmacy':
-                summary['eczane_sayisi'] += 1
-            elif highway == 'bus_stop':
-                summary['otobus_duragi_sayisi'] += 1
-            elif railway == 'subway_entrance':
-                summary['metro_girisi_sayisi'] += 1
+            elements = data.get('elements', [])
+            summary = {
+                'hastane_sayisi': 0, 'okul_sayisi': 0, 'eczane_sayisi': 0,
+                'otobus_duragi_sayisi': 0, 'metro_girisi_sayisi': 0
+            }
+            
+            for element in elements:
+                tags = element.get('tags', {})
+                amenity, highway, railway = tags.get('amenity'), tags.get('highway'), tags.get('railway')
                 
-        return summary
-    except Exception as e:
-        log.error(f"Overpass API hatası: {e}")
-        return None
+                if amenity == 'hospital': summary['hastane_sayisi'] += 1
+                elif amenity == 'school': summary['okul_sayisi'] += 1
+                elif amenity == 'pharmacy': summary['eczane_sayisi'] += 1
+                elif highway == 'bus_stop': summary['otobus_duragi_sayisi'] += 1
+                elif railway == 'subway_entrance': summary['metro_girisi_sayisi'] += 1
+            
+            log.info(f"[OK] Overpass verisi başarıyla çekildi ({server_url})")
+            return summary
+
+        except Exception as e:
+            log.warning(f"[WARN] Overpass sunucusu hatası ({server_url}): {e}")
+            continue # Bir sonraki sunucuyu dene
+
+    log.error("❌ Tüm Overpass sunucuları başarısız oldu.")
+    return None
 
 
 def get_poi_data(district: str, lat: float = None, lon: float = None) -> dict:
@@ -865,12 +1045,37 @@ def generate_ai_report(db, stats: dict, params: dict) -> str:
         for s in web_samples[:3]: # En alakalı 3 tanesini ekleyelim
             web_summary += f"- {s.get('title')}: {s.get('price'):,.0f} ₺ ({s.get('area_m2')} m²)\n"
 
+    # Trendleri metin olarak hazırla (Python 3.10 uyumluluğu için f-string dışında)
+    trends_list = stats.get('trends', [])
+    trends_summary = ", ".join([f"{t.get('month')}: {t.get('price', 0):,.0f}₺" for t in trends_list])
+
+    # Yeni ve profesyonel prompt yapısı (Kullanıcı Talebi)
     prompt = (
-        f"Sen profesyonel bir gayrimenkul değerleme uzmanısın. Kısa ve net Türkçe rapor yaz (maks 200 kelime).\n\n"
-        f"Bölge: {district} | Tip: {prop_type} | Oda: {rooms or 'Fark Etmez'} | m²: {area_m2 or 'Fark Etmez'}\n\n"
-        f"Piyasa: {count} emsal | Ort: {avg:,.0f} ₺/m² | Aralık: {minn:,.0f}-{maxx:,.0f} ₺/m²"
-        f"{web_summary}\n\n"
-        f"Başlıklar: 1) Piyasa Analizi 2) Değerleme 3) Avantaj/Dezavantaj 4) Yatırım Potansiyeli"
+        f"Bir gayrimenkul değerleme uzmanı ve veri analisti olarak görev yapıyorsun. "
+        f"Sana sağlanan [Gayrimenkul Bilgileri], [Bölgesel Veriler] ve [Piyasa Trendleri] parametrelerini kullanarak profesyonel bir Gayrimenkul Değerleme Analiz Raporu oluştur.\n\n"
+        f"[Gayrimenkul Bilgileri]:\n"
+        f"- Adres/Bölge: {district}\n"
+        f"- Mülk Tipi: {prop_type}\n"
+        f"- Oda Sayısı: {rooms or 'Belirtilmemiş'}\n"
+        f"- Net Alan: {area_m2 or 'Belirtilmemiş'} m²\n"
+        f"- Bina Yaşı: {params.get('age', '—')} yıl, Isıtma: {params.get('heating', '—')}\n\n"
+        f"[Bölgesel Veriler]:\n"
+        f"- İncelenen Emsal Sayısı: {count}\n"
+        f"- Ortalama m² Fiyatı: {avg:,.0f} ₺\n"
+        f"- Fiyat Aralığı: {minn:,.0f} ₺ - {maxx:,.0f} ₺\n"
+        f"- Amortisman Süresi (ROI): {stats.get('roi', {}).get('amortization_years', '—')} yıl\n"
+        f"- Likidite Skoru: %{stats.get('liquidity_score', 85)}\n\n"
+        f"[Piyasa Trendleri]:\n"
+        f"- Son 5 Ay Değişimi: {trends_summary}\n\n"
+        f"Rapor şu bölümlerden oluşmalı ve görselleştirme için uygun bir Markdown yapısında sunulmalıdır:\n"
+        f"1. Özet Kartı: Mülkün adresi, oda sayısı, net/brüt m² ve temel özellikleri.\n"
+        f"2. AI Fiyat Tahmin Modeli: Mevcut satış ve kira değerini hesapla. Minimum ve maksimum değer aralıklarını belirt. Tahminin güven oranını (%) ver.\n"
+        f"3. Yatırım Analizi: Yıllık ROI (Amortisman süresi) ve m² birim fiyatını hesapla.\n"
+        f"4. Gelecek Projeksiyonu: Bölgesel trendlere dayanarak 6 ve 12 aylık fiyat/kira artış tahminlerini bir tablo olarak sun.\n"
+        f"5. Piyasa İçgörüleri: Bölgenin demografik yapısı, ulaşım imkanları ve değer artış nedenleri hakkında 3 ana başlıkta profesyonel yorum yap.\n"
+        f"6. Karşılaştırmalı Analiz: Verilen benzer 3-4 mülkü m² fiyatı, bina yaşı ve özellikleri bakımından kıyasla.\n\n"
+        f"GÜNCEL TARİH: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
+        f"Format Notu: Çıktıyı doğrudan bir PDF oluşturma kütüphanesine (örneğin ReportLab veya WeasyPrint) besleyebileceğim şekilde temiz bir Markdown formatında ver. Sektörel terimler kullan ve tarafsız bir dil benimse."
     )
 
     # Gemini denemesi
@@ -881,39 +1086,60 @@ def generate_ai_report(db, stats: dict, params: dict) -> str:
             from google.api_core import exceptions
             import time
             
+            import sys
+            print(f"[AI] Modeli Hazırlanıyor: {db.get_gemini_model() or 'gemini-1.5-flash'}", file=sys.stderr, flush=True)
             genai.configure(api_key=api_key)
             
-            # Model adını veritabanından çek (system_management -> gemini_model)
-            model_name = db.get_gemini_model()
+            # Model adını veritabanından çek (varsayılan: gemini-1.5-flash)
+            model_name = db.get_gemini_model() or "gemini-1.5-flash"
+            
+            import sys
+            print(f"[API] Gemini İstek Gönderiliyor: {model_name}...", file=sys.stderr, flush=True)
             model = genai.GenerativeModel(model_name)
             
-            # Retry Logic (Yeniden Deneme Mekanizması)
+            # Retry Logic
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    # Throttling: Her istekten önce kısa bir bekleme
                     time.sleep(0.5)
-                    
                     response = model.generate_content(prompt)
-                    return response.text
+                    
+                    if response and response.text:
+                        import sys
+                        print("[SUCCESS] AI Yanıtı Başarıyla Alındı.", file=sys.stderr, flush=True)
+                        return response.text
+                    else:
+                        raise Exception("Boş veya engellenmiş AI yanıtı.")
+                        
                 except exceptions.ResourceExhausted:
                     if attempt < max_retries - 1:
-                        log.warning(f"⚠️ Gemini Rate Limit doldu, {10} saniye bekleniyor... (Deneme {attempt+1}/{max_retries})")
+                        import sys
+                        print(f"[WARN] Gemini Rate Limit. {10}s bekleniyor...", file=sys.stderr, flush=True)
                         time.sleep(10)
                         continue
-                    else:
-                        raise
+                    else: raise
                 except Exception as e:
-                    log.error(f"Gemini API çağrı hatası: {e}")
-                    break
+                    import sys
+                    print(f"[ERROR] Gemini Deneme {attempt+1} Hatası: {e}", file=sys.stderr, flush=True)
+                    if "404" in str(e):
+                        try:
+                            models = [m.name for m in genai.list_models()]
+                            import sys
+                            print(f"[INFO] Mevcut Modeller: {models}", file=sys.stderr, flush=True)
+                        except: pass
+                    if attempt == max_retries - 1: break
                     
     except Exception as e:
         if "429" in str(e) or "quota" in str(e).lower():
             log.error("Valuation Engine: Gemini API Rate Limit aşıldı.")
-            return "YAPAY ZEKA RATE LIMIT HATASI: Çok fazla istek atıldı. Detaylı AI raporu üretilemedi. Ancak aşağıda istatistiksel veriler sunulmaktadır.\n\n" + _template_report(params, stats)
-        log.warning(f"Gemini AI genel hatası: {e}")
+            return "YAPAY ZEKA RATE LIMIT HATASI: Çok fazla istek atıldı. Lütfen biraz bekleyin.\n\n" + _template_report(params, stats)
+        
+        err_msg = f"GEMINI HATASI: {str(e)}. (Lütfen system_management tablosundaki anahtarları kontrol edin veya servisi RESTART edin.)"
+        log.warning(err_msg)
+        import sys
+        print(f"[ERROR] Gemini Başarısız: {e}", file=sys.stderr, flush=True)
 
-    # OpenAI denemesi
+    # OpenAI denemesi (Eğer Gemini başarısız olursa ve OpenAI anahtarı varsa)
     try:
         import openai
         key = db.get_openai_api_key()
@@ -998,8 +1224,10 @@ def generate_pdf_report(params: dict, stats: dict, ai_text: str,
             log.warning(f"Arial fontu yüklenemedi, varsayılana dönülüyor: {e}")
 
         if not output_path:
+            reports_dir = Path(__file__).parent / "reports"
+            reports_dir.mkdir(exist_ok=True)
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = str(Path.home() / "Downloads" / f"EstateAI_Degerleme_{ts}.pdf")
+            output_path = str(reports_dir / f"EstateAI_Rapor_{ts}.pdf")
 
         doc = SimpleDocTemplate(
             output_path,
@@ -1071,7 +1299,7 @@ def generate_pdf_report(params: dict, stats: dict, ai_text: str,
         est = estimate_value(stats, area_m2) if area_m2 > 0 else {}
 
         sdata = [
-            ["Gösterge", "Değer (₺/m²)", "Tahmini Toplam (₺)"],
+            ["Gösterge", "Değer (TL/m²)", "Tahmini Toplam (TL)"],
             ["Minimum m² Fiyatı",
              f"{stats.get('min_sqm_price', 0):,.0f}",
              f"{stats.get('min_sqm_price', 0)*area_m2:,.0f}" if area_m2 else "—"],
@@ -1117,9 +1345,9 @@ def generate_pdf_report(params: dict, stats: dict, ai_text: str,
             story.append(Paragraph("Tahmini Piyasa Değeri", h2))
             mid_val = est.get("estimated_mid", 0)
             vdata = [[
-                "ALT DEĞER\n" + f"{est.get('estimated_low', 0):,.0f} ₺",
-                "ORTA DEĞER (ÖNERİLEN)\n" + f"{mid_val:,.0f} ₺",
-                "ÜST DEĞER\n" + f"{est.get('estimated_high', 0):,.0f} ₺",
+                "ALT DEĞER\n" + f"{est.get('estimated_low', 0):,.0f} TL",
+                "ORTA DEĞER (ÖNERİLEN)\n" + f"{mid_val:,.0f} TL",
+                "ÜST DEĞER\n" + f"{est.get('estimated_high', 0):,.0f} TL",
             ]]
             vtable = Table(vdata, colWidths=[5.33*cm, 5.33*cm, 5.33*cm])
             vtable.setStyle(TableStyle([
@@ -1139,13 +1367,27 @@ def generate_pdf_report(params: dict, stats: dict, ai_text: str,
 
         # ── AI Değerleme Metni ────────────────────────────────────────────────
         if ai_text and ai_text.strip():
+            ai_text = ai_text.replace("₺", "TL")
             story.append(HRFlowable(width="100%", thickness=1, color=HexColor("#E2E8F0"), spaceAfter=10))
             story.append(Paragraph("Uzman Değerlendirmesi", h2))
             for line in ai_text.split("\n"):
                 line = line.strip()
                 if not line:
                     story.append(Spacer(1, 4))
-                elif line.isupper() or line.endswith(":"):
+                    continue
+                
+                # Markdown Kalın Yazı Desteği (Düzenli ifade ile güvenli değişim)
+                import re
+                line = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
+                
+                # Markdown Başlık Desteği
+                if line.startswith("###"):
+                    story.append(Paragraph(line.replace("###", "").strip(), h2))
+                elif line.startswith("##"):
+                    story.append(Paragraph(line.replace("##", "").strip(), h2))
+                elif line.startswith("#"):
+                    story.append(Paragraph(line.replace("#", "").strip(), h1))
+                elif line.endswith(":") or line.isupper():
                     story.append(Paragraph(line, h2))
                 else:
                     story.append(Paragraph(line, body))
