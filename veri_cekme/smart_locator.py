@@ -205,10 +205,15 @@ class SmartLocator:
             time.sleep(2)
             
             # 1. BOT / ENGEL KONTROLÜ
-            title = self.driver.title.lower()
-            if "blocked" in title or "cloudflare" in title or "robot" in title:
-                log.warning(f"[WARN] SmartLocator: Hepsiemlak bot korumasına takıldı (Title: {title})")
-                return None
+            for attempt in range(4):
+                title = self.driver.title.lower()
+                if any(x in title for x in ["just a moment", "challenge", "blocked", "cloudflare", "robot", "bekleyiniz"]):
+                    log.warning(f"[WARN] SmartLocator: Hepsiemlak bot koruması/challenge tespit edildi (Title: {title}). Bekleniyor... {attempt+1}/4")
+                    time.sleep(8)
+                    if attempt > 0:
+                        self.driver.scroll.down(100)
+                else:
+                    break
 
             # 2. SAHA TEMİZLİĞİ - Pop-up ve overlay'leri sil (Daha agresif)
             self.driver.run_js("""

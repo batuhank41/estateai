@@ -5,9 +5,14 @@ from pydantic import BaseModel
 from typing import Optional, Union
 import sys
 import os
+from dotenv import load_dotenv
 
 # Allow importing local files
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(current_dir)
+# Load environment variables from .env file
+load_dotenv(os.path.join(current_dir, ".env"))
+
 
 from valuation_engine import run_valuation_hybrid
 from fsbo_scraper import scrape_fsbo
