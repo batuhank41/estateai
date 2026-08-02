@@ -10,7 +10,6 @@ Veritabanı Motoru: SQLite (Yerel) ve PostgreSQL (Bulut) destekli çift mod.
 ================================================================================
                          1. MERKEZİ TABLOLAR (CORE)
 ================================================================================
-db url: https://ietquzberomzssdtqxtb.supabase.co
 
 [companies] - Şirketler Tablosu
 --------------------------------
