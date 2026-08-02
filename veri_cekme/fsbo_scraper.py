@@ -24,7 +24,7 @@ import os as _os
 def _get_proxy_config() -> dict:
     """Residential Proxy yapılandırmasını env var'dan okur.
     VDS'te: export RESIDENTIAL_PROXY_URL="http://user:pass@host:port"
-    Proxynet örneği: http://proxynet-yf5tjb9b:786gLuDaF9ehz8@gate-res.proxynet.io:8000
+    
     """
     proxy_url = _os.environ.get("RESIDENTIAL_PROXY_URL", "").strip()
     
