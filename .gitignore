@@ -1,0 +1,11 @@
+node_modules/
+.next/
+.env
+.env.*
+*.json
+__pycache__/
+*.pyc
+veri_cekme/
+# Only allow specific safe files if needed
+!apps/web/src/components/valuation/MapPicker.tsx
+!apps/web/src/app/app/valuation/page.tsx
