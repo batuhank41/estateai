@@ -51,13 +51,4 @@ Türkiye'nin büyük emlak portallarındaki agresif Cloudflare ve DataDome korum
 * **Network / Proxy:** ZenRows, ScrapingBee (Stealth/Premium Proxies)
 
 ---
-
-## 🎓 Ne Öğrendim? (Mühendislik Kazanımları)
-Bu proje benim için sadece bir kodlama pratiği değil, tam teşekküllü bir ürün mimarisi kurma deneyimi oldu:
-1. **Veri Güvenliği ve Ortam Değişkenleri:** API anahtarlarının ve hassas tokenların dışarı sızmaması için `.env` ve mimari izolasyon pratiklerini kusursuz uyguladım.
-2. **Asenkron İşlemler ve Timeout Yönetimi:** 3. parti API'lerin (ScrapingBee) 45 saniyenin üzerinde sürebilen cevap sürelerini (ReadTimeout) yönetmeyi ve thread'leri bloklamadan asenkron (async) beklemeyi tasarladım.
-3. **Büyük Veri (Big Data) Filtreleme:** JSON formatındaki on binlerce satırlık (60.000+) ilan verisini memory-efficient (bellek dostu) bir şekilde okuyup filtrelemeyi öğrendim.
-4. **Prompt Engineering:** Büyük Dil Modellerini (LLM) rastgele metin üreticilerinden çıkarıp, spesifik bir JSON formatında (Örn: `{"avg_sqm_price": 50000}`) kesin çıktılar veren deterministik bir fonksiyona dönüştürmeyi başardım.
-
----
 > **Not:** Bu depo (repository), güvenlik ve gizlilik politikaları (API Key, Özel Emsal Datası) gereği projenin sadece mimari vizyonunu ve seçili güvenli komponentlerini (Frontend Map UI vb.) barındırmaktadır. Arka plan servisleri ve veritabanı gizli tutulmuştur.
