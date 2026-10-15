@@ -1,54 +1,48 @@
-# 🏙️ EstateAI - Intelligent Real Estate Valuation & Opportunity Radar
+🏙️ EstateAI - Intelligent Real Estate Valuation & Opportunity Radar
+EstateAI is an AI-powered, enterprise-grade real estate valuation and investment analysis platform developed for the Turkish real estate market (specifically for land, residential, and commercial properties).
 
-![EstateAI Banner](https://img.shields.io/badge/EstateAI-Advanced_Valuation_System-orange?style=for-the-badge&logo=homeassistant)
-![React](https://img.shields.io/badge/React-Next.js-blue?style=flat-square&logo=react)
-![Python](https://img.shields.io/badge/Python-Backend-green?style=flat-square&logo=python)
-![Gemini AI](https://img.shields.io/badge/AI-Gemini_2.5_Flash-purple?style=flat-square&logo=google)
+From a computer engineer's perspective, this project is a comprehensive graduation/vision project that blends complex architectures, data security, fault-tolerant system design, and LLM (Large Language Model) integrations.
 
-**EstateAI**, Türkiye gayrimenkul piyasasına (özellikle arsa, konut ve ticari mülklere) yönelik geliştirilmiş, yapay zeka destekli, kurumsal düzeyde bir gayrimenkul değerleme ve yatırım analizi platformudur.
+🚀 Project Purpose and Vision
+Real estate valuation processes are traditionally slow, reliant on incomplete data, and manual. EstateAI combines official TKGM (General Directorate of Land Registry and Cadastre) data, live market comparables (Big Data), and AI analyses within seconds to provide users with detailed reports containing return on investment (ROI) and depreciation calculations at the quality of an SPK-licensed valuation expert.
 
-Bu proje, bir Bilgisayar Mühendisi gözüyle karmaşık mimarileri, veri güvenliğini, fault-tolerant (hata tolere edebilir) sistem tasarımını ve LLM (Büyük Dil Modeli) entegrasyonlarını harmanlayan kapsamlı bir bitirme / vizyon projesidir.
+In addition, the Opportunity Radar featured in the project is equipped with special algorithms to instantly detect newly dropped or price-cut bargain listings.
 
----
+🛠️ Core Features & Engineering Solutions
+1. 🛡️ Dual-Engine Anti-Bot Scraping Architecture
+To bypass aggressive Cloudflare and DataDome protections on major Turkish real estate portals, I developed a fallback web scraping architecture built on top of ScrapingBee and ZenRows APIs.
 
-## 🚀 Projenin Amacı ve Vizyonu
-Gayrimenkul değerleme süreçleri geleneksel olarak yavaş, eksik verilere dayalı ve manuel süreçlerdir. **EstateAI**, resmi TKGM (Tapu Kadastro) verilerini, canlı piyasa emsallerini (Big Data) ve yapay zeka analizlerini saniyeler içinde birleştirerek kullanıcıya SPK lisanslı bir değerleme uzmanı kalitesinde, yatırım getirisi (ROI) ve amortisman hesaplamaları içeren detaylı raporlar sunar.
+Stealth Proxy & JS Rendering: Security walls (such as CAPTCHAs) are 100% bypassed by leaving a full browser fingerprint on the target server.
 
-Ayrıca projede yer alan **Fırsat Radarı**, piyasaya yeni düşen veya fiyatı kırılan kelepir ilanları anında tespit etmek için özel algoritmalarla donatılmıştır.
+The system instantly performs a failover to Engine 2 if it encounters an error in Engine 1.
 
----
+2. 🗺️ PostGIS and TKGM Integration (Smart Locator)
+When a user searches or clicks on a location on the map, Reverse Geocoding is performed in the background using Nominatim (OpenStreetMap).
 
-## 🛠️ Temel Özellikler & Mühendislik Çözümleri
+Block/Parcel and Attribute (Land, Field, Masonry House, etc.) data are fetched point-and-click via the TKGM WMS service.
 
-### 1. 🛡️ Çift Motorlu Anti-Bot Scraping Mimarisi (Dual-Engine Proxy)
-Türkiye'nin büyük emlak portallarındaki agresif Cloudflare ve DataDome korumalarını aşmak için **ScrapingBee** ve **ZenRows** API'leri üzerine kurulu "Fallback" (yedekli) bir web tarama mimarisi geliştirdim.
-- **Stealth Proxy & JS Rendering:** Hedef sunucuya tam bir tarayıcı (browser) parmak izi bırakılarak güvenlik duvarları (CAPTCHA vb.) %100 oranında atlatılır.
-- Sistem Motor 1'de hata alırsa anında Motor 2'ye geçiş (failover) yapar.
+Location Premium Algorithm: Valuation multipliers are generated dynamically by calculating the parcel's distance to the sea, road, hospital, or city center.
 
-### 2. 🗺️ PostGIS ve TKGM Entegrasyonu (Smart Locator)
-- Kullanıcı haritada bir yere arama yaptığında veya tıkladığında, arka planda **Nominatim (OpenStreetMap)** ile Reverse Geocoding yapılır.
-- Nokta atışı **TKGM WMS** servisi üzerinden Ada/Parsel ve Nitelik (Arsa, Tarla, Kargir Ev vb.) verileri çekilir.
-- **Konum Şerefiyesi Algoritması:** Parselin denize, yola, hastaneye veya merkeze uzaklığı hesaplanarak değerleme çarpanları (Multiplier) dinamik olarak oluşturulur.
+3. 🧠 Smart Valuation Model with LLM (Gemini 2.5 Flash)
+Instead of classic if-else based reporting, all collected raw data (Comparable FAR/KAKS, Parcel Area, Region Average Price) are fed into the Google Gemini model using a special Prompt Engineering architecture.
 
-### 3. 🧠 LLM (Gemini 2.5 Flash) ile Akıllı Değerleme Modeli
-- Klasik if-else tabanlı raporlama yerine, toplanan tüm ham veriler (Emsal KAKS, Parsel Alanı, Bölge Ortalama Fiyatı) özel bir Prompt Engineering mimarisiyle Google Gemini modeline beslenir.
-- Yapay zeka bu verileri işleyerek; **Ham Toprak Payı**, **Kemik Değer**, **İmar Gücü Primi** ve **Likidite Skoru** gibi finansal metrikleri hesaplar ve Markdown formatında zengin bir rapor sunar.
+Processing this data, the artificial intelligence calculates financial metrics such as Raw Land Share, Bone Value, Zoning Power Premium, and Liquidity Score, and presents a rich report in Markdown format.
 
-### 4. 🌙 Gece Kuşu Algoritması (Midnight Shift Logic)
-- **Fırsat Radarı**, "Sadece bugünün ilanlarını getir" mantığıyla çalışır. Ancak gece 00:00 ile 06:00 arasında çalıştırıldığında tarih değiştiği için ilanları kaçırma riskine (Edge Case) karşı özel bir `timedelta` (Gece Kuşu) mantığı geliştirilmiş ve zaman farkından doğan veri kaybı önlenmiştir.
+4. 🌙 Midnight Shift Logic
+The Opportunity Radar works with the logic of "Fetch only today's listings." However, to prevent the risk of missing listings due to the date change when run between 00:00 and 06:00 (Edge Case), a special timedelta (Midnight Shift) logic was developed, preventing data loss caused by time differences.
 
-### 5. 🔍 Robust String Matching (Kelime Sınırı Algoritmaları)
-- Türkiye'deki mahalle isimlerinin ("Orhan" vs "Orhaniye", "Fatih" vs "Fatihi") birbiriyle karışmasını önlemek amacıyla, boşlukları silinen veriler üzerinde Regex ve index bazlı (Word Boundary) çok hassas bir eşleşme algoritması (False-Positive önleyici) yazdım.
+5. 🔍 Robust String Matching (Word Boundary Algorithms)
+To prevent neighborhood names in Turkey ("Orhan" vs "Orhaniye", "Fatih" vs "Fatihi") from mixing up with each other, I wrote a very precise matching algorithm (False-Positive preventer) using Regex and index-based (Word Boundary) on data with spaces removed.
 
----
+💻 Tech Stack
+Frontend: React, Next.js, TailwindCSS, TypeScript, Leaflet (Interactive Maps)
 
-## 💻 Kullanılan Teknolojiler (Tech Stack)
+Backend (Data & Engine): Python, BeautifulSoup4, Requests, Regex
 
-* **Frontend:** React, Next.js, TailwindCSS, TypeScript, Leaflet (Interactive Maps)
-* **Backend (Data & Engine):** Python, BeautifulSoup4, Requests, Regex
-* **AI & Machine Learning:** Google Generative AI (Gemini SDK)
-* **Veri & GIS:** TKGM API, Nominatim, PostGIS Logic
-* **Network / Proxy:** ZenRows, ScrapingBee (Stealth/Premium Proxies)
+AI & Machine Learning: Google Generative AI (Gemini SDK)
 
----
-> **Not:** Bu depo (repository), güvenlik ve gizlilik politikaları (API Key, Özel Emsal Datası) gereği projenin sadece mimari vizyonunu ve seçili güvenli komponentlerini (Frontend Map UI vb.) barındırmaktadır. Arka plan servisleri ve veritabanı gizli tutulmuştur.
+Data & GIS: TKGM API, Nominatim, PostGIS Logic
+
+Network / Proxy: ZenRows, ScrapingBee (Stealth/Premium Proxies)
+
+Note: Due to security and privacy policies (API Key, Private Comparable Data), this repository contains only the architectural vision of the project and selected secure components (Frontend Map UI, etc.). Background services and the database are kept private.
